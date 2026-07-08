@@ -190,6 +190,7 @@
     "overview": "Overview",
     "songs": "My Songs",
     "profile": "Profile",
+    "paidTitle": "Payment confirmed — welcome to your dashboard!",
     "greeting": "Hi, {name} 👋",
     "subtitle": "Here's everything about your songs.",
     "newSong": "Create a song",

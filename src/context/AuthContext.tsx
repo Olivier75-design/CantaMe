@@ -45,14 +45,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, name?: string) => {
+    // Create the account server-side, already email-confirmed (no SMTP needed),
+    // then sign in to establish a browser session.
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, name }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error || 'Sign up failed' };
+    } catch {
+      return { error: 'Network error. Please try again.' };
+    }
+
     const supabase = getSupabaseBrowser();
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: name || '' },
-      },
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
     return { error: null };
   }, []);
@@ -60,8 +68,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     const supabase = getSupabaseBrowser();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
-    return { error: null };
+    if (!error) return { error: null };
+
+    // Self-heal accounts stuck as "Email not confirmed" (no SMTP configured):
+    // confirm the account server-side, then retry the sign-in once.
+    if (/not confirmed|confirm/i.test(error.message)) {
+      try {
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        if (res.ok) {
+          const retry = await supabase.auth.signInWithPassword({ email, password });
+          if (!retry.error) return { error: null };
+          return { error: retry.error.message };
+        }
+      } catch {
+        /* fall through to original error */
+      }
+    }
+
+    return { error: error.message };
   }, []);
 
   const signOut = useCallback(async () => {

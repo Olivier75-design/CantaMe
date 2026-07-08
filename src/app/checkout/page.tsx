@@ -79,7 +79,9 @@ export default function CheckoutPage() {
         });
 
         sessionStorage.removeItem('ct-order');
-        router.push(`/order/${data.id}`);
+        // Send the buyer straight into their dashboard, which now groups
+        // everything (new song, downloads, past orders, settings).
+        router.push('/dashboard?paid=1');
       }
     } catch {
       setIsProcessing(false);

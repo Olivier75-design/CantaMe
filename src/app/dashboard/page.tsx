@@ -33,11 +33,23 @@ export default function DashboardPage() {
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [newPassword, setNewPassword] = useState('');
   const [pwMsg, setPwMsg] = useState<string | null>(null);
+  const [justPaid, setJustPaid] = useState(false);
 
   // Auth guard
   useEffect(() => {
     if (!loading && !user) router.push('/signin?mode=signin');
   }, [loading, user, router]);
+
+  // Detect arrival right after a successful payment (?paid=1) and clean the URL
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('paid') === '1') {
+      setJustPaid(true);
+      setTab('overview');
+      window.history.replaceState({}, '', '/dashboard');
+    }
+  }, []);
 
   // Load the user's songs (orders are linked by email)
   useEffect(() => {
@@ -159,6 +171,24 @@ export default function DashboardPage() {
 
           {/* ── Main ── */}
           <main className="dashboard-main">
+            {/* Post-payment confirmation banner */}
+            {justPaid && (
+              <div className="paid-banner animate-fade-in-up" role="status">
+                <span className="paid-banner-icon">🎉</span>
+                <div className="paid-banner-text">
+                  <strong>{t('dashboard.paidTitle')}</strong>
+                  <span className="body-sm">{t('order.receiptNote')}</span>
+                </div>
+                <button
+                  className="paid-banner-close"
+                  aria-label={t('common.close')}
+                  onClick={() => setJustPaid(false)}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             {/* OVERVIEW */}
             {tab === 'overview' && (
               <div className="animate-fade-in-up">
