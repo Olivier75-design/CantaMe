@@ -38,9 +38,9 @@ export default function Header() {
           <LanguageSwitch />
           {user ? (
             <>
-              <span className="body-md" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              <Link href="/dashboard" className="navbar-login-link" style={{ fontSize: '0.85rem' }}>
                 👤 {displayName}
-              </span>
+              </Link>
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={() => signOut()}
