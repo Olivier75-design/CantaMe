@@ -1,0 +1,98 @@
+[
+  {
+    "id": "g1",
+    "recipient": "Valentina",
+    "style": "bachata",
+    "file": "g1.mp3",
+    "prompt": "Bachata dominicana romantica y tierna, guitarra requinto, bongo y guira, voz masculina calida, tempo medio, festivo.",
+    "lyrics": "[verse]\nValentina, quince primaveras,\ntu sonrisa alumbra la noche entera.\n[chorus]\nBaila Valentina, esta bachata es para ti,\nprincesa de la fiesta, brilla y se feliz."
+  },
+  {
+    "id": "g2",
+    "recipient": "Ana & Miguel",
+    "style": "bolero",
+    "file": "g2.mp3",
+    "prompt": "Bolero clasico romantico, guitarra espanola, cuerdas suaves, voz masculina intima, lento y elegante.",
+    "lyrics": "[verse]\nAna y Miguel, dos almas, un solo amor,\nhoy se unen para siempre en esta cancion.\n[chorus]\nQue viva su boda, que viva el querer,\nAna y Miguel, por siempre, un solo ser."
+  },
+  {
+    "id": "g3",
+    "recipient": "Don Roberto",
+    "style": "cumbia",
+    "file": "g3.mp3",
+    "prompt": "Cumbia festiva y alegre, acordeon, guiro y percusion, ritmo bailable, voz masculina animada.",
+    "lyrics": "[verse]\nDon Roberto cumple sesenta con honor,\ntoda la familia baila a su alrededor.\n[chorus]\nQue suene la cumbia para Don Roberto,\nsesenta anos de vida, corazon abierto."
+  },
+  {
+    "id": "g4",
+    "recipient": "Sofia",
+    "style": "ranchera",
+    "file": "g4.mp3",
+    "prompt": "Ranchera mexicana con mariachi, trompetas y guitarron, voz masculina sentida y emotiva.",
+    "lyrics": "[verse]\nSofia, bajo tu ventana vengo a cantar,\ncon mariachi y con el alma para enamorar.\n[chorus]\nSofia, Sofia, eres mi ilusion,\nesta serenata nace del corazon."
+  },
+  {
+    "id": "g5",
+    "recipient": "Mama Rosa",
+    "style": "balada",
+    "file": "g5.mp3",
+    "prompt": "Balada pop latina emotiva, piano y cuerdas, voz calida, tierna y sentida.",
+    "lyrics": "[verse]\nMama Rosa, tus manos me ensenaron a amar,\ntu carino infinito nunca voy a olvidar.\n[chorus]\nGracias, Mama Rosa, luz de mi hogar,\nen este dia es mi turno de cantar."
+  },
+  {
+    "id": "g6",
+    "recipient": "Camila",
+    "style": "bachata",
+    "file": "g6.mp3",
+    "prompt": "Bachata romantica moderna, guitarra requinto dulce, voz masculina apasionada, tempo medio.",
+    "lyrics": "[verse]\nCamila, no encuentro las palabras sin temblar,\npero esta bachata te lo viene a confesar.\n[chorus]\nCamila, te quiero, no lo puedo callar,\neres tu, solo tu, mi lugar."
+  },
+  {
+    "id": "g7",
+    "recipient": "Diego",
+    "style": "reggaeton",
+    "file": "g7.mp3",
+    "prompt": "Reggaeton urbano festivo, beat dembow, sintetizadores, voz masculina energica y pegajosa.",
+    "lyrics": "[verse]\nDiego lo logro, con esfuerzo llego,\nhoy se gradua, la meta alcanzo.\n[chorus]\nDale Diego, este es tu dia,\nlo diste todo, pura alegria."
+  },
+  {
+    "id": "g8",
+    "recipient": "Abuela Carmen",
+    "style": "salsa",
+    "file": "g8.mp3",
+    "prompt": "Salsa dura con metales, piano montuno, congas y timbales, voz masculina festiva, muy bailable.",
+    "lyrics": "[verse]\nAbuela Carmen, hoy la rumba es para usted,\ntoda la familia baila de pie.\n[chorus]\nAzucar, Abuela Carmen, a gozar,\nen su cumpleanos vamos a bailar."
+  },
+  {
+    "id": "g9",
+    "recipient": "Mi Amor",
+    "style": "bolero",
+    "file": "g9.mp3",
+    "prompt": "Bolero romantico intimo, guitarra y cuerdas suaves, voz masculina tierna, lento.",
+    "lyrics": "[verse]\nMi amor, en este San Valentin,\nsolo quiero tu risa junto a mi.\n[chorus]\nMi amor, mi amor, mi unico querer,\ncontigo la vida vuelve a florecer."
+  },
+  {
+    "id": "g10",
+    "recipient": "Lucia",
+    "style": "vallenato",
+    "file": "g10.mp3",
+    "prompt": "Vallenato colombiano, acordeon, caja y guacharaca, voz masculina sentida, ritmo de paseo.",
+    "lyrics": "[verse]\nLucia, con mi acordeon te vengo a enamorar,\nen esta serenata mi amor te quiero dar.\n[chorus]\nLucia, Lucia, flor de mi cantar,\ntu nombre en vallenato no deja de sonar."
+  },
+  {
+    "id": "g11",
+    "recipient": "Isabella",
+    "style": "cumbia",
+    "file": "g11.mp3",
+    "prompt": "Cumbia alegre y juvenil, teclados, guiro y percusion, voz femenina festiva, muy bailable.",
+    "lyrics": "[verse]\nIsabella cumple quince, que emocion,\nla pista se enciende con esta cancion.\n[chorus]\nBaila Isabella, esta noche es tuya,\ncumbia y alegria para que reluzcas."
+  },
+  {
+    "id": "g12",
+    "recipient": "Carlos & Maria",
+    "style": "bachata",
+    "file": "g12.mp3",
+    "prompt": "Bachata romantica apasionada, guitarra requinto, bongo y guira, voz masculina calida, tempo medio.",
+    "lyrics": "[verse]\nCarlos y Maria, hoy juran su amor,\nen bachata se funde su corazon.\n[chorus]\nCarlos y Maria, para siempre unidos,\nque baile su amor, que viva el latido."
+  }
+]
