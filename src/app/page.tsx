@@ -267,11 +267,9 @@ export default function HomeDashboardPage() {
           </h1>
           <p className="hero-subtitle">{t('landing.subtitle')}</p>
 
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-lg)' }}>
-            <button className="btn btn-primary btn-lg hero-cta" onClick={scrollToStudio}>
-              {t('landing.cta')}
-            </button>
-          </div>
+          <button className="btn btn-primary btn-lg hero-cta" style={{ marginBottom: 'var(--space-lg)' }} onClick={scrollToStudio}>
+            {t('landing.cta')}
+          </button>
 
           <div className="social-proof">
             <div className="avatar-stack">
