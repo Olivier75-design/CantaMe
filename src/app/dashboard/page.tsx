@@ -183,16 +183,21 @@ export default function DashboardPage() {
     if (!user?.id) return;
     setBuying(true);
     try {
-      const r = await fetch('/api/credits', {
+      const pack = CREDITS.packs.find((p) => p.credits === buyQty) || CREDITS.packs[0];
+      const r = await fetch('/api/payments/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, quantity: buyQty }),
+        body: JSON.stringify({
+          userId: user.id,
+          packId: pack.id,
+          email: user.email,
+          name: user.user_metadata?.full_name || '',
+        }),
       });
       const d = await r.json();
-      if (typeof d.credits === 'number') setCredits(d.credits);
-      setShowBuy(false);
-      setBuyQty(100);
-    } finally {
+      if (d.checkoutUrl) { window.location.href = d.checkoutUrl; return; }
+      setBuying(false);
+    } catch {
       setBuying(false);
     }
   };

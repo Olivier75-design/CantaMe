@@ -17,6 +17,15 @@
   "wizard": {
     "step": "Step {n} of {total}"
   },
+  "payment": {
+    "checking": "Confirming your payment...",
+    "success": "Payment confirmed!",
+    "redirecting": "Taking you to your dashboard...",
+    "failed": "Payment not completed",
+    "failedBody": "Your payment wasn't completed. No credits were charged.",
+    "backDashboard": "Back to dashboard",
+    "redirectNote": "You'll be redirected to Moneroo to pay securely."
+  },
   "landing": {
     "eyebrow": "Emotion in music",
     "supertitle": "The #1 in AI music creation",

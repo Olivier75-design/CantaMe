@@ -29,9 +29,6 @@ export default function CheckoutPage() {
   const [orderData, setOrderData] = useState<OrderData | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
   const [quantity, setQuantity] = useState(100);
-  const [cardNumber, setCardNumber] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [cvc, setCvc] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,37 +109,31 @@ export default function CheckoutPage() {
     }
   };
 
-  // Path B: user is out of credits -> buy then unlock.
-  const handleBuyAndUnlock = async (e: React.FormEvent) => {
+  // Path B: user needs credits -> pay via Moneroo hosted checkout.
+  // The pending order stays in sessionStorage; the callback returns here to finalize.
+  const handlePay = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cardNumber || !expiry || !cvc) return;
     setError(null);
     setIsProcessing(true);
     try {
-      // Simulate purchase: add credits.
-      const buy = await fetch('/api/credits', {
+      const pack = CREDITS.packs.find((p) => p.credits === quantity) || CREDITS.packs[0];
+      const res = await fetch('/api/payments/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user?.id, quantity }),
+        body: JSON.stringify({
+          userId: user?.id,
+          packId: pack.id,
+          email: user?.email,
+          name: user?.user_metadata?.full_name || '',
+        }),
       });
-      if (!buy.ok) throw new Error('buy');
-
-      const orderId = await createOrder();
-      if (!orderId) throw new Error('order');
-      const ok = await finalize(orderId);
-      if (!ok) throw new Error('finalize');
-      sessionStorage.removeItem('ct-order');
-      router.push('/dashboard?paid=1');
+      const data = await res.json();
+      if (!res.ok || !data.checkoutUrl) throw new Error(data.error || 'pay');
+      window.location.href = data.checkoutUrl;
     } catch {
-      setError(isEn ? 'Payment failed. Please try again.' : 'El pago falló. Inténtalo de nuevo.');
+      setError(isEn ? 'Payment could not start. Please try again.' : 'No se pudo iniciar el pago. Inténtalo de nuevo.');
       setIsProcessing(false);
     }
-  };
-
-  const formatCardNumber = (v: string) => v.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim();
-  const formatExpiry = (v: string) => {
-    const d = v.replace(/\D/g, '').slice(0, 4);
-    return d.length >= 3 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
   };
 
   if (loading || !user || credits === null) {
@@ -205,7 +196,7 @@ export default function CheckoutPage() {
                 </button>
               </div>
             ) : (
-              <form className="card" onSubmit={handleBuyAndUnlock}>
+              <form className="card" onSubmit={handlePay}>
                 <h3 className="heading-sm mb-sm">💳 {t('credits.buyTitle')}</h3>
                 <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)' }}>{t('credits.buySubtitle')}</p>
 
@@ -238,26 +229,11 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                <div className="input-group">
-                  <label className="input-label">{t('checkout.cardNumber')}</label>
-                  <input className="input-field" placeholder="4242 4242 4242 4242" value={cardNumber} onChange={(e) => setCardNumber(formatCardNumber(e.target.value))} maxLength={19} required />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
-                  <div className="input-group">
-                    <label className="input-label">{t('checkout.expiry')}</label>
-                    <input className="input-field" placeholder="MM/YY" value={expiry} onChange={(e) => setExpiry(formatExpiry(e.target.value))} maxLength={5} required />
-                  </div>
-                  <div className="input-group">
-                    <label className="input-label">{t('checkout.cvc')}</label>
-                    <input className="input-field" placeholder="123" value={cvc} onChange={(e) => setCvc(e.target.value.replace(/\D/g, '').slice(0, 4))} maxLength={4} required />
-                  </div>
-                </div>
-
                 {error && <p className="body-sm mb-md" style={{ color: '#F25F4C' }}>⚠️ {error}</p>}
                 <button type="submit" className="btn btn-primary btn-lg w-full" disabled={isProcessing}>
                   {isProcessing ? t('checkout.processing') : `${t('credits.payAndUnlock')} · $${total}`}
                 </button>
-                <p className="body-sm text-center mt-md" style={{ opacity: 0.6 }}>🔒 {t('checkout.secure')}</p>
+                <p className="body-sm text-center mt-md" style={{ opacity: 0.6 }}>🔒 {t('payment.redirectNote')}</p>
               </form>
             )}
           </div>

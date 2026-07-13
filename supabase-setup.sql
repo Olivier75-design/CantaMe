@@ -21,6 +21,17 @@ on conflict (id) do update set public = true;
 alter table if exists public.orders add column if not exists lyrics text;
 
 
+-- 1c) Moneroo payments: tracks credit-pack purchases so crediting is reliable
+--     and idempotent (webhook + return callback both settle the same row).
+create table if not exists public.payments (
+  id text primary key,          -- Moneroo payment id
+  user_id uuid,
+  credits int not null default 0,
+  status text not null default 'pending',   -- pending | completed
+  created_at timestamptz default now()
+);
+
+
 -- ── Everything below is ONLY needed if you do NOT set the service_role key ──
 
 -- 2) Storage policies: allow read/insert/update on the "songs" bucket.
