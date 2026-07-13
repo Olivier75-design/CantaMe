@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { generateSongFile } from '@/lib/generateSong';
+import { spendCredits, addCredits } from '@/lib/credits';
+import { CREDITS } from '@/lib/constants';
 
 // Revisions regenerate the song on the spot -> Node runtime, allow a few minutes.
 export const runtime = 'nodejs';
@@ -42,6 +44,18 @@ export async function PUT(
 
       const notes: string = body.notes || '';
 
+      // Revisions cost 1 credit. Charge the order owner before regenerating.
+      const ownerId = order.user_id || order.userId;
+      if (ownerId) {
+        const spend = await spendCredits(ownerId, CREDITS.perRevision);
+        if (!spend.ok) {
+          return NextResponse.json(
+            { error: 'no_credits', credits: spend.credits },
+            { status: 402 },
+          );
+        }
+      }
+
       // Recover the anecdotes captured at creation time.
       let anecdote1 = '';
       let anecdote2 = '';
@@ -54,21 +68,28 @@ export async function PUT(
         /* ignore */
       }
 
-      const result = await generateSongFile(
-        {
-          recipientName: order.recipient_name || order.recipientName || '',
-          relation: order.relation,
-          occasion: order.occasion,
-          style: order.style,
-          tone: order.tone,
-          voiceGender: order.voice_gender || order.voiceGender || 'female',
-          message: order.message,
-          anecdote1,
-          anecdote2,
-          songLanguage: order.language,
-        },
-        notes
-      );
+      let result;
+      try {
+        result = await generateSongFile(
+          {
+            recipientName: order.recipient_name || order.recipientName || '',
+            relation: order.relation,
+            occasion: order.occasion,
+            style: order.style,
+            tone: order.tone,
+            voiceGender: order.voice_gender || order.voiceGender || 'female',
+            message: order.message,
+            anecdote1,
+            anecdote2,
+            songLanguage: order.language,
+          },
+          notes
+        );
+      } catch (genErr) {
+        // Refund the revision credit if regeneration failed.
+        if (ownerId) await addCredits(ownerId, CREDITS.perRevision);
+        throw genErr;
+      }
 
       // Log the revision, then attach the new song and mark it ready again.
       await db.createRevision(id, notes);

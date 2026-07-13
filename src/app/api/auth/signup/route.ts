@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { getSupabaseServer } from '@/lib/supabase';
+import { CREDITS } from '@/lib/constants';
 
 export const runtime = 'nodejs';
 
@@ -22,6 +23,7 @@ export async function POST(request: NextRequest) {
       password,
       email_confirm: true,
       user_metadata: { full_name: name || '' },
+      app_metadata: { credits: CREDITS.freeOnSignup },
     });
 
     if (error) {

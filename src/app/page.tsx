@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
-import { OCCASIONS, MUSIC_STYLES, OCCASION_STYLE_MAP } from '@/lib/constants';
+import { OCCASIONS, MUSIC_STYLES, OCCASION_STYLE_MAP, CREDITS, GALLERY_SAMPLES } from '@/lib/constants';
 import AudioPlayer from '@/components/AudioPlayer';
+import { TEMPLATES } from '@/lib/templates';
 
 interface OrderForm {
   recipientName: string;
@@ -18,11 +20,12 @@ interface OrderForm {
 }
 
 export default function HomeDashboardPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const isEn = lang === 'en';
   const router = useRouter();
 
-  // Wizard Steps: 1 = Occasion, 2 = Style, 3 = Details, 4 = Preview & Pricing
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  // Wizard Steps: 1 = Occasion, 2 = Style, 3 = Details, 4 = Lyrics, 5 = Preview & Pricing
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   // Styles state with static fallback
   const [musicStyles, setMusicStyles] = useState<any[]>(MUSIC_STYLES);
@@ -63,6 +66,15 @@ export default function HomeDashboardPage() {
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
+  // Editable lyrics step (generated before the music is composed)
+  const [lyrics, setLyrics] = useState('');
+  const [lyricsTitle, setLyricsTitle] = useState('');
+  const [isGeneratingLyrics, setIsGeneratingLyrics] = useState(false);
+  const [lyricsError, setLyricsError] = useState<string | null>(null);
+
+  // Landing hero free-text seed
+  const [heroText, setHeroText] = useState('');
+
   const loadingSteps = [
     t('hero.stats') === 'songs created' ? '🎵 Analyzing your story...' : '🎵 Analizando tu historia...',
     t('hero.stats') === 'songs created' ? '✍️ Writing personalized lyrics...' : '✍️ Escribiendo letras personalizadas...',
@@ -93,25 +105,85 @@ export default function HomeDashboardPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleSuggestMemory = () => {
+    const occasion = selectedOccasion || 'otro';
+    const langKey = form.songLanguage === 'mix' ? 'mix' : (form.songLanguage === 'en' ? 'en' : 'es');
+    const category = TEMPLATES[occasion] || TEMPLATES['otro'];
+    const options = category[langKey] || category['es'];
+    const list = options.memories;
+    const random = list[Math.floor(Math.random() * list.length)];
+    const name = form.recipientName.trim() || (langKey === 'en' ? 'my dear' : 'mi amor');
+    const text = random.replace(/{name}/g, name);
+    updateField('anecdote1', text);
+  };
+
+  const handleSuggestMessage = () => {
+    const occasion = selectedOccasion || 'otro';
+    const langKey = form.songLanguage === 'mix' ? 'mix' : (form.songLanguage === 'en' ? 'en' : 'es');
+    const category = TEMPLATES[occasion] || TEMPLATES['otro'];
+    const options = category[langKey] || category['es'];
+    const list = options.messages;
+    const random = list[Math.floor(Math.random() * list.length)];
+    const name = form.recipientName.trim() || (langKey === 'en' ? 'my dear' : 'mi amor');
+    const text = random.replace(/{name}/g, name);
+    updateField('message', text);
+  };
+
+  const scrollToStudio = () => document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
+
+  // Hero "describe the person" input -> seed the story + jump to the wizard.
+  const handleHeroCreate = () => {
+    if (heroText.trim()) updateField('anecdote1', heroText.trim());
+    scrollToStudio();
+  };
+
+  const briefBody = () => ({ ...form, occasion: selectedOccasion, style: selectedStyle });
+
+  // Generate (or regenerate) the editable lyrics for the current brief.
+  const requestLyrics = async () => {
+    setLyricsError(null);
+    setIsGeneratingLyrics(true);
+    try {
+      const res = await fetch('/api/generate-lyrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(briefBody()),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Error');
+      setLyrics(data.lyrics || '');
+      setLyricsTitle(data.title || '');
+    } catch (err) {
+      setLyricsError(err instanceof Error ? err.message : (t('hero.stats') === 'songs created' ? 'Could not write the lyrics' : 'No se pudieron escribir las letras'));
+    } finally {
+      setIsGeneratingLyrics(false);
+    }
+  };
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.recipientName || !form.relation || !form.anecdote1 || !form.message) return;
 
     setGenerateError(null);
     setGeneratedAudioUrl(null);
+    setLyrics('');
+    setStep(4);
+    await requestLyrics();
+  };
+
+  // Compose the music from the (possibly user-edited) lyrics.
+  const handleCompose = async () => {
+    setGenerateError(null);
+    setGeneratedAudioUrl(null);
     setIsGenerating(true);
     setGeneratingStep(0);
-    setStep(4);
+    setStep(5);
 
     try {
       const res = await fetch('/api/generate-song', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          occasion: selectedOccasion,
-          style: selectedStyle,
-        }),
+        body: JSON.stringify({ ...briefBody(), lyrics, title: lyricsTitle }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Error');
@@ -135,14 +207,16 @@ export default function HomeDashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating]);
 
-  // Handle plan purchase redirection
-  const handleSelectPlan = (tier: string) => {
+  // Save the brief and continue to sign-in, then the credit step.
+  const handleGetSong = () => {
     const orderDetails = {
       ...form,
       occasion: selectedOccasion,
       style: selectedStyle,
-      tier,
+      tier: 'credit',
+      price: 2,
       audioUrl: generatedAudioUrl,
+      lyrics,
     };
     sessionStorage.setItem('ct-order', JSON.stringify(orderDetails));
     router.push('/signin');
@@ -158,25 +232,46 @@ export default function HomeDashboardPage() {
     <>
       {/* ===== HERO (landing) ===== */}
       <section className="landing-hero">
-        <div className="hero-floats" aria-hidden>
-          <div className="float-badge fb-1"><span className="dot" /> {t('occasions.cumpleanos')} 🎂</div>
-          <div className="float-badge fb-2"><span className="dot" /> {t('occasions.bautizo')} 👶</div>
-          <div className="float-badge fb-3"><span className="dot" /> {t('occasions.boda')} 💍</div>
-          <div className="float-badge fb-4"><span className="dot" /> {t('occasions.serenata')} 🌙</div>
+        {/* Floating occasion badges */}
+        <div className="hero-floats">
+          <div className="float-badge fb-1">
+            <span className="dot" />
+            {isEn ? 'Birthday 🎂' : 'Cumpleaños 🎂'}
+          </div>
+          <div className="float-badge fb-2">
+            <span className="dot" />
+            {isEn ? 'Serenade 🌙' : 'Serenata 🌙'}
+          </div>
+          <div className="float-badge fb-3">
+            <span className="dot" />
+            {isEn ? 'Wedding 💍' : 'Boda 💍'}
+          </div>
+          <div className="float-badge fb-4">
+            <span className="dot" />
+            {isEn ? 'Baptism 👶' : 'Bautizo 👶'}
+          </div>
         </div>
 
         <div className="hero-inner">
-          <span className="hero-pill"><span className="dot" /> {t('landing.eyebrow')}</span>
-          <p className="hero-supertitle">{t('landing.supertitle')}</p>
+          <div className="hero-pill">
+            <span className="dot" />
+            {t('landing.eyebrow')}
+          </div>
+
+          <div className="hero-supertitle">
+            {t('landing.supertitle')}
+          </div>
+
           <h1 className="hero-title">
-            {t('landing.titleLine1')}
-            <span className="accent">{t('landing.titleAccent')}</span>
+            {t('landing.titleLine1')} <span className="accent">{t('landing.titleAccent')}</span> {t('landing.titleLine2')}
           </h1>
           <p className="hero-subtitle">{t('landing.subtitle')}</p>
 
-          <a href="#studio" className="btn btn-primary btn-lg hero-cta">
-            {t('landing.cta')} <span aria-hidden>→</span>
-          </a>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-lg)' }}>
+            <button className="btn btn-primary btn-lg hero-cta" onClick={scrollToStudio}>
+              {t('landing.cta')}
+            </button>
+          </div>
 
           <div className="social-proof">
             <div className="avatar-stack">
@@ -191,12 +286,34 @@ export default function HomeDashboardPage() {
             </div>
           </div>
         </div>
+      </section>
 
-        <div className="hero-marquee">
-          <div className="marquee-track">
-            {[...OCCASIONS, ...OCCASIONS].map((o, i) => (
-              <span className="marquee-item" key={i}>{t(o.nameKey)} <span className="spark">✦</span></span>
-            ))}
+      {/* ===== SAMPLES: real songs ===== */}
+      <section className="section landing-samples">
+        <div className="container">
+          <div className="flex items-center justify-between mb-lg" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <div className="section-eyebrow">{t('landing.samplesEyebrow')}</div>
+              <h2 className="heading-md">{t('landing.samplesTitle')}</h2>
+            </div>
+            <Link href="/gallery" className="link-btn">{t('landing.seeAll')} →</Link>
+          </div>
+          <div className="samples-grid">
+            {GALLERY_SAMPLES.slice(0, 3).map((g) => {
+              const gs = MUSIC_STYLES.find((s) => s.id === g.style);
+              const go = OCCASIONS.find((o) => o.id === g.occasion);
+              return (
+                <div className="card sample-card" key={g.id}>
+                  <div className="sample-head">
+                    <span className="chip chip-primary">{go ? t(go.nameKey) : g.occasion}</span>
+                    <span className="chip">{gs ? t(gs.nameKey) : g.style}</span>
+                  </div>
+                  <div className="sample-title">{g.recipientName}</div>
+                  <div className="body-sm mb-md">{g.description}</div>
+                  <AudioPlayer src={g.audioUrl} variant="mini" title={g.recipientName} />
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -217,12 +334,12 @@ export default function HomeDashboardPage() {
           </p>
         </div>
 
-        {/* Dynamic Step indicator */}
-        <div className="steps">
-          <div className={`step-dot ${step >= 1 ? 'completed' : ''} ${step === 1 ? 'active' : ''}`} />
-          <div className={`step-dot ${step >= 2 ? 'completed' : ''} ${step === 2 ? 'active' : ''}`} />
-          <div className={`step-dot ${step >= 3 ? 'completed' : ''} ${step === 3 ? 'active' : ''}`} />
-          <div className={`step-dot ${step >= 4 ? 'completed' : ''} ${step === 4 ? 'active' : ''}`} />
+        {/* Progress bar */}
+        <div className="wizard-progress">
+          <div className="wizard-progress-track">
+            <div className="wizard-progress-fill" style={{ width: `${(step / 5) * 100}%` }} />
+          </div>
+          <span className="wizard-progress-label">{t('wizard.step', { n: String(step), total: '5' })}</span>
         </div>
 
         {/* STEP 1: Occasion Selection */}
@@ -355,7 +472,17 @@ export default function HomeDashboardPage() {
 
                 {/* Anecdote 1 */}
                 <div className="input-group">
-                  <label className="input-label">{t('form.anecdote1')} *</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                    <label className="input-label" style={{ margin: 0 }}>{t('form.anecdote1')} *</label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
+                      onClick={handleSuggestMemory}
+                    >
+                      ✨ {isEn ? 'Suggest memory' : 'Sugerir recuerdo'}
+                    </button>
+                  </div>
                   <textarea
                     className="input-field"
                     placeholder={t('form.anecdote1Placeholder')}
@@ -369,7 +496,17 @@ export default function HomeDashboardPage() {
 
                 {/* Message */}
                 <div className="input-group">
-                  <label className="input-label">{t('form.message')} *</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                    <label className="input-label" style={{ margin: 0 }}>{t('form.message')} *</label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
+                      onClick={handleSuggestMessage}
+                    >
+                      ✨ {isEn ? 'Suggest message' : 'Sugerir mensaje'}
+                    </button>
+                  </div>
                   <textarea
                     className="input-field"
                     placeholder={t('form.messagePlaceholder')}
@@ -451,8 +588,59 @@ export default function HomeDashboardPage() {
           </div>
         )}
 
-        {/* STEP 4: Loading Preview or Displaying Player & Plans */}
+        {/* STEP 4: Lyrics Generation & Review */}
         {step === 4 && (
+          <div className="animate-fade-in-up">
+            {isGeneratingLyrics ? (
+              /* Writing lyrics */
+              <div className="text-center" style={{ padding: 'var(--space-2xl) 0' }}>
+                <div className="spinner-lg" style={{ margin: '0 auto var(--space-lg)' }} />
+                <h3 className="heading-md">✍️ {t('lyrics.writing')}</h3>
+              </div>
+            ) : lyricsError ? (
+              /* Lyrics error */
+              <div className="card text-center" style={{ maxWidth: 540, margin: '0 auto' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: 'var(--space-sm)' }}>⚠️</div>
+                <h3 className="heading-md mb-md">{t('lyrics.failed')}</h3>
+                <p className="body-sm mb-lg" style={{ color: 'var(--accent-primary)' }}>{lyricsError}</p>
+                <div className="flex gap-md justify-center" style={{ flexWrap: 'wrap' }}>
+                  <button className="btn btn-outline" onClick={requestLyrics}>🔄 {t('lyrics.regenerate')}</button>
+                  <button className="btn btn-primary" onClick={() => setStep(3)}>← {t('common.back')}</button>
+                </div>
+              </div>
+            ) : (
+              /* Editable lyrics — review, edit, then compose */
+              <div className="card" style={{ maxWidth: 640, margin: '0 auto' }}>
+                <div className="text-center mb-lg">
+                  <div style={{ fontSize: '2.5rem' }}>📝</div>
+                  <h3 className="heading-md mb-sm">{t('lyrics.title')}</h3>
+                  <p className="body-sm" style={{ color: 'var(--text-muted)' }}>{t('lyrics.subtitle')}</p>
+                </div>
+                <div className="input-group">
+                  <label className="input-label">{t('lyrics.label')}</label>
+                  <textarea
+                    className="input-field lyrics-textarea"
+                    value={lyrics}
+                    onChange={(e) => setLyrics(e.target.value)}
+                    style={{ minHeight: 300, lineHeight: 1.7, fontFamily: 'inherit' }}
+                  />
+                </div>
+                <div className="flex gap-md mt-lg" style={{ flexWrap: 'wrap' }}>
+                  <button className="btn btn-outline" onClick={requestLyrics}>🔄 {t('lyrics.regenerate')}</button>
+                  <button className="btn btn-primary" style={{ flex: 1, minWidth: 180 }} onClick={handleCompose} disabled={!lyrics.trim()}>
+                    🎶 {t('form.generatePreview')}
+                  </button>
+                </div>
+                <div className="text-center mt-md">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setStep(3)}>← {t('common.back')}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 5: Compose Music & Preview & Pricing */}
+        {step === 5 && (
           <div className="animate-fade-in-up">
             {isGenerating ? (
               /* Generating Animation Screen */
@@ -488,9 +676,10 @@ export default function HomeDashboardPage() {
                   {t('hero.stats') === 'songs created' ? 'Generation failed' : 'La generación falló'}
                 </h3>
                 <p className="body-sm mb-lg" style={{ color: 'var(--accent-primary)' }}>{generateError}</p>
-                <button className="btn btn-primary" onClick={() => setStep(3)}>
-                  ← {t('common.back')}
-                </button>
+                <div className="flex gap-md justify-center" style={{ flexWrap: 'wrap' }}>
+                  <button className="btn btn-primary" onClick={handleCompose}>🔄 {t('lyrics.compose')}</button>
+                  <button className="btn btn-outline" onClick={() => { setStep(4); setGenerateError(null); }}>← {t('lyrics.backToLyrics')}</button>
+                </div>
               </div>
             ) : (
               /* Preview Player & Purchase Cards */
@@ -517,57 +706,29 @@ export default function HomeDashboardPage() {
                   </p>
                 </div>
 
-                {/* Plans Selection */}
-                <div className="text-center mb-lg">
-                  <h2 className="heading-md">{t('preview.choosePlan')}</h2>
-                </div>
+                {/* Credit-based unlock */}
+                <div className="credit-cta card">
+                  <div className="credit-cta-badge">🎵 {t('credits.oneSong')}</div>
+                  <h2 className="heading-md mb-sm">{t('credits.unlockTitle')}</h2>
+                  <p className="body-md mb-lg">{t('credits.unlockSubtitle')}</p>
 
-                <div className="pricing-grid">
-                  {/* Básica */}
-                  <div className="pricing-card">
-                    <div className="pricing-name">{t('preview.basicaTitle')}</div>
-                    <div className="pricing-price">{t('preview.basicaPrice')}</div>
-                    <ul className="pricing-features">
-                      {(t('preview.basicaFeatures') as string[]).map((f, i) => <li key={i}>{f}</li>)}
-                    </ul>
-                    <button className="btn btn-outline w-full" onClick={() => handleSelectPlan('basica')}>
-                      {t('preview.selectPlan')}
-                    </button>
-                  </div>
+                  <ul className="credit-cta-features">
+                    <li>✓ {t('credits.featFull')}</li>
+                    <li>✓ {t('credits.featDownload')}</li>
+                    <li>✓ {t('credits.featShare')}</li>
+                  </ul>
 
-                  {/* Especial */}
-                  <div className="pricing-card pricing-card-featured">
-                    <div className="pricing-tag pricing-tag-popular">{t('preview.especialTag')}</div>
-                    <div className="pricing-name">{t('preview.especialTitle')}</div>
-                    <div className="pricing-price">{t('preview.especialPrice')}</div>
-                    <ul className="pricing-features">
-                      {(t('preview.especialFeatures') as string[]).map((f, i) => <li key={i}>{f}</li>)}
-                    </ul>
-                    <button className="btn btn-primary w-full" onClick={() => handleSelectPlan('especial')}>
-                      {t('preview.selectPlan')}
-                    </button>
-                  </div>
-
-                  {/* Premium */}
-                  <div className="pricing-card">
-                    <div className="pricing-tag pricing-tag-value">{t('preview.premiumTag')}</div>
-                    <div className="pricing-name">{t('preview.premiumTitle')}</div>
-                    <div className="pricing-price">
-                      <span className="pricing-original">{t('preview.premiumOriginal')}</span>
-                      {t('preview.premiumPrice')}
-                    </div>
-                    <ul className="pricing-features">
-                      {(t('preview.premiumFeatures') as string[]).map((f, i) => <li key={i}>{f}</li>)}
-                    </ul>
-                    <button className="btn btn-outline w-full" onClick={() => handleSelectPlan('premium')}>
-                      {t('preview.selectPlan')}
-                    </button>
-                  </div>
+                  <button className="btn btn-primary btn-lg w-full" onClick={handleGetSong}>
+                    ✨ {t('credits.getMySong')}
+                  </button>
+                  <p className="body-sm mt-md" style={{ color: 'var(--text-muted)' }}>
+                    {t('credits.firstFree')}
+                  </p>
                 </div>
 
                 <div className="text-center mt-xl">
-                  <button className="btn btn-ghost" onClick={() => setStep(3)}>
-                    ← {t('common.back')}
+                  <button className="btn btn-ghost" onClick={() => setStep(4)}>
+                    ← {t('lyrics.backToLyrics')}
                   </button>
                 </div>
               </div>

@@ -48,6 +48,7 @@ export interface Order {
   stripe_session_id?: string;
   audio_url?: string;
   instrumental_url?: string;
+  lyrics?: string;
   created_at: string;
   updated_at: string;
   revisions: Revision[];
@@ -266,13 +267,19 @@ export const db = {
       stripe_session_id: orderData.stripe_session_id || orderData.stripeSessionId || null,
       audio_url: orderData.audio_url || orderData.audioUrl || null,
       instrumental_url: orderData.instrumental_url || orderData.instrumentalUrl || null,
+      lyrics: orderData.lyrics ?? null,
     };
 
-    const { data, error } = await supabase
-      .from('orders')
-      .insert(row)
-      .select()
-      .single();
+    const doInsert = (r: Record<string, unknown>) =>
+      supabase.from('orders').insert(r).select().single();
+
+    let { data, error } = await doInsert(row);
+    // Gracefully degrade if the optional `lyrics` column hasn't been migrated yet.
+    if (error && /lyrics/i.test(error.message)) {
+      const rowNoLyrics: Record<string, unknown> = { ...row };
+      delete rowNoLyrics.lyrics;
+      ({ data, error } = await doInsert(rowNoLyrics));
+    }
 
     if (error) {
       console.error('Error creating order:', error);

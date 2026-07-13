@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       language: body.songLanguage || 'es',
       audioUrl: body.audioUrl,
       instrumentalUrl: body.instrumentalUrl,
+      lyrics: body.lyrics,
     });
 
     return NextResponse.json(order);

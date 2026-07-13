@@ -16,6 +16,11 @@ values ('songs', 'songs', true)
 on conflict (id) do update set public = true;
 
 
+-- 1b) Store the generated lyrics so the dashboard "LETRA" panel can show them.
+--     Safe to run repeatedly. (The app degrades gracefully if this is missing.)
+alter table if exists public.orders add column if not exists lyrics text;
+
+
 -- ── Everything below is ONLY needed if you do NOT set the service_role key ──
 
 -- 2) Storage policies: allow read/insert/update on the "songs" bucket.

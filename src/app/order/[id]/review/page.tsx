@@ -20,6 +20,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const [isRevising, setIsRevising] = useState(false);
   const [newAudioUrl, setNewAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [noCredits, setNoCredits] = useState(false);
 
   useEffect(() => {
     fetch(`/api/orders/${id}`)
@@ -36,6 +37,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     if (!notes.trim()) return;
 
     setError(null);
+    setNoCredits(false);
     setIsRevising(true);
     try {
       const res = await fetch(`/api/orders/${id}`, {
@@ -43,6 +45,12 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'request_revision', notes }),
       });
+      if (res.status === 402) {
+        setNoCredits(true);
+        setError(t('revision.noCredits'));
+        setIsRevising(false);
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Error');
       setNewAudioUrl(data.audioUrl || null);
@@ -135,14 +143,22 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                   {error && (
                     <p className="body-sm mt-md" style={{ color: 'var(--accent-primary)' }}>⚠️ {error}</p>
                   )}
+                  {noCredits && (
+                    <a href="/dashboard" className="btn btn-outline w-full mt-md">
+                      🎵 {t('credits.buyCredits')}
+                    </a>
+                  )}
 
                   <button
                     type="submit"
                     className="btn btn-primary w-full mt-lg"
                     disabled={!notes.trim()}
                   >
-                    {t('revision.submit')} 🎧
+                    {t('revision.submit')} · 1 🎵
                   </button>
+                  <p className="body-sm text-center mt-sm" style={{ color: 'var(--text-muted)' }}>
+                    {t('revision.costNote')}
+                  </p>
                 </form>
               </>
             )}

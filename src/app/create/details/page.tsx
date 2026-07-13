@@ -3,13 +3,16 @@
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
+import { TEMPLATES } from '@/lib/templates';
 
 function DetailsForm() {
   const { t } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const occasion = searchParams.get('occasion') || '';
+  const occasion = searchParams.get('occasion') || 'otro';
   const style = searchParams.get('style') || '';
+
+  const isEn = t('nav.login') === 'Log in';
 
   const [form, setForm] = useState({
     recipientName: '',
@@ -25,6 +28,30 @@ function DetailsForm() {
 
   const updateField = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSuggestMemory = () => {
+    const occKey = occasion || 'otro';
+    const langKey = form.songLanguage === 'mix' ? 'mix' : (form.songLanguage === 'en' ? 'en' : 'es');
+    const category = TEMPLATES[occKey] || TEMPLATES['otro'];
+    const options = category[langKey] || category['es'];
+    const list = options.memories;
+    const random = list[Math.floor(Math.random() * list.length)];
+    const name = form.recipientName.trim() || (langKey === 'en' ? 'my dear' : 'mi amor');
+    const text = random.replace(/{name}/g, name);
+    updateField('anecdote1', text);
+  };
+
+  const handleSuggestMessage = () => {
+    const occKey = occasion || 'otro';
+    const langKey = form.songLanguage === 'mix' ? 'mix' : (form.songLanguage === 'en' ? 'en' : 'es');
+    const category = TEMPLATES[occKey] || TEMPLATES['otro'];
+    const options = category[langKey] || category['es'];
+    const list = options.messages;
+    const random = list[Math.floor(Math.random() * list.length)];
+    const name = form.recipientName.trim() || (langKey === 'en' ? 'my dear' : 'mi amor');
+    const text = random.replace(/{name}/g, name);
+    updateField('message', text);
   };
 
   const relations = t('form.relations') as Record<string, string>;
@@ -107,7 +134,17 @@ function DetailsForm() {
 
               {/* Anecdote 1 */}
               <div className="input-group">
-                <label className="input-label">{t('form.anecdote1')} *</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                  <label className="input-label" style={{ margin: 0 }}>{t('form.anecdote1')} *</label>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
+                    onClick={handleSuggestMemory}
+                  >
+                    ✨ {isEn ? 'Suggest memory' : 'Sugerir recuerdo'}
+                  </button>
+                </div>
                 <textarea
                   className="input-field"
                   placeholder={t('form.anecdote1Placeholder')}
@@ -138,7 +175,17 @@ function DetailsForm() {
 
               {/* Message */}
               <div className="input-group">
-                <label className="input-label">{t('form.message')} *</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                  <label className="input-label" style={{ margin: 0 }}>{t('form.message')} *</label>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)' }}
+                    onClick={handleSuggestMessage}
+                  >
+                    ✨ {isEn ? 'Suggest message' : 'Sugerir mensaje'}
+                  </button>
+                </div>
                 <textarea
                   className="input-field"
                   placeholder={t('form.messagePlaceholder')}

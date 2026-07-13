@@ -54,13 +54,18 @@ export const OCCASION_STYLE_MAP: Record<string, string[]> = {
   otro: ['bachata', 'cumbia', 'reggaeton'],
 };
 
-export const TIERS = {
-  basica: { price: 10, delivery: '48h' },
-  especial: { price: 20, delivery: '48h' },
-  premium: { price: 35, delivery: '24h' },
+// ─── Credit-based pricing (replaces the old subscription tiers) ───
+// New users get 50 free credits. Each song = 20 credits, each revision = 10 credits.
+export const CREDITS = {
+  freeOnSignup: 50, // credits granted to a brand-new account
+  perSong: 20, // credits consumed to unlock/create a song
+  perRevision: 10, // credits consumed per revision
+  packs: [
+    { id: 'pack_100', credits: 100, price: 5 },  // 100 credits for $5
+    { id: 'pack_300', credits: 300, price: 12 }, // 300 credits for $12 (save $3)
+    { id: 'pack_500', credits: 500, price: 18 }, // 500 credits for $18 (save $7)
+  ]
 } as const;
-
-export type TierKey = keyof typeof TIERS;
 
 // Sample gallery entries for demo purposes
 export interface GalleryEntry {
