@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import { OCCASIONS, MUSIC_STYLES, OCCASION_STYLE_MAP, CREDITS, GALLERY_SAMPLES } from '@/lib/constants';
 import AudioPlayer from '@/components/AudioPlayer';
 import { TEMPLATES } from '@/lib/templates';
@@ -21,8 +22,17 @@ interface OrderForm {
 
 export default function HomeDashboardPage() {
   const { t, lang } = useLanguage();
+  const { user } = useAuth();
   const isEn = lang === 'en';
   const router = useRouter();
+
+  // Safety net: if a logged-in user lands here with a pending order (e.g. Google
+  // OAuth returned to the Site URL / home), bounce to the dashboard to finalize it.
+  useEffect(() => {
+    if (user && typeof window !== 'undefined' && sessionStorage.getItem('ct-order')) {
+      router.replace('/dashboard');
+    }
+  }, [user, router]);
 
   // Wizard Steps: 1 = Occasion, 2 = Style, 3 = Details, 4 = Lyrics, 5 = Preview & Pricing
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
@@ -219,7 +229,9 @@ export default function HomeDashboardPage() {
       lyrics,
     };
     sessionStorage.setItem('ct-order', JSON.stringify(orderDetails));
-    router.push('/signin');
+    // Logged-in users skip sign-in and go straight to the dashboard, which
+    // finalizes the song automatically. Guests sign in first (incl. Google).
+    router.push(user ? '/dashboard' : '/signin');
   };
 
   const relations = t('form.relations') as Record<string, string>;

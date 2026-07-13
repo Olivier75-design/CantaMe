@@ -266,6 +266,7 @@
     "greeting": "Hi, {name} 👋",
     "subtitle": "Here's everything about your songs.",
     "statGenres": "Genres used",
+    "creatingSong": "Creating your song...",
     "mySongs": "My songs",
     "playing": "Playing",
     "showing": "Showing {n} of {total} songs",

@@ -40,16 +40,10 @@ export default function SignInPage() {
     }
   }, []);
 
-  // If user is already logged in, redirect
+  // Once logged in, always go to the dashboard. If a song order is pending,
+  // the dashboard finalizes it automatically (creates the song + spends credits).
   useEffect(() => {
-    if (user) {
-      const hasPendingOrder = sessionStorage.getItem('ct-order');
-      if (hasPendingOrder) {
-        router.push('/checkout');
-      } else {
-        router.push('/dashboard');
-      }
-    }
+    if (user) router.push('/dashboard');
   }, [user, router]);
 
   const handleGoogleSignIn = async () => {
@@ -82,13 +76,8 @@ export default function SignInPage() {
       return;
     }
 
-    // Redirect to checkout if there's a pending order, otherwise home
-    const hasPendingOrder = sessionStorage.getItem('ct-order');
-    if (hasPendingOrder) {
-      router.push('/checkout');
-    } else {
-      router.push('/');
-    }
+    // Dashboard finalizes any pending order automatically.
+    router.push('/dashboard');
   };
 
   const isEn = t('nav.login') === 'Log in';

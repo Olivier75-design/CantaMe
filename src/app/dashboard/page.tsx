@@ -65,6 +65,10 @@ export default function DashboardPage() {
   const [buyQty, setBuyQty] = useState(100);
   const [buying, setBuying] = useState(false);
 
+  // Auto-finalize a pending song order right after login (incl. Google OAuth).
+  const [finalizing, setFinalizing] = useState(false);
+  const finalizedRef = useRef(false);
+
   // Library controls
   const [filter, setFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
@@ -112,6 +116,58 @@ export default function DashboardPage() {
       .then((d) => setCredits(typeof d.credits === 'number' ? d.credits : 0))
       .catch(() => setCredits(0));
   }, [user]);
+
+  // Show the "creating your song" screen immediately if an order is pending.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && sessionStorage.getItem('ct-order')) setFinalizing(true);
+  }, []);
+
+  // Finalize the pending order once user + credit balance are known.
+  useEffect(() => {
+    if (!user?.id || credits === null || finalizedRef.current) return;
+    const stored = sessionStorage.getItem('ct-order');
+    if (!stored) return;
+    finalizedRef.current = true;
+
+    (async () => {
+      // Not enough credits -> go buy them (no duplicate order gets created).
+      if (credits < CREDITS.perSong) {
+        router.push('/checkout');
+        return;
+      }
+      setFinalizing(true);
+      try {
+        const brief = JSON.parse(stored);
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...brief, clientEmail: user.email, userId: user.id, tier: 'credit', price: 0 }),
+        });
+        const order = await res.json();
+        if (!order?.id) throw new Error('order');
+
+        const fin = await fetch('/api/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: order.id, userId: user.id }),
+        });
+        if (fin.status === 402) { router.push('/checkout'); return; }
+
+        sessionStorage.removeItem('ct-order');
+        setJustPaid(true);
+        const [o, c] = await Promise.all([
+          fetch(`/api/orders?email=${encodeURIComponent(user.email || '')}`).then((r) => r.json()),
+          fetch(`/api/credits?userId=${user.id}`).then((r) => r.json()),
+        ]);
+        setOrders(Array.isArray(o) ? o : []);
+        if (typeof c.credits === 'number') setCredits(c.credits);
+      } catch {
+        router.push('/checkout');
+      } finally {
+        setFinalizing(false);
+      }
+    })();
+  }, [user, credits, router]);
 
   // ── Audio element wiring ──
   useEffect(() => {
@@ -233,10 +289,11 @@ export default function DashboardPage() {
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  if (loading || !user) {
+  if (loading || !user || finalizing) {
     return (
       <div className="section text-center">
-        <div className="spinner-lg" style={{ margin: '4rem auto' }} />
+        <div className="spinner-lg" style={{ margin: '4rem auto var(--space-lg)' }} />
+        {finalizing && <h2 className="heading-md">🎶 {t('dashboard.creatingSong')}</h2>}
       </div>
     );
   }
