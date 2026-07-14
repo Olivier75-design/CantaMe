@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
@@ -71,6 +71,7 @@ export default function HomeDashboardPage() {
   // Loading animation state
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStep, setGeneratingStep] = useState(0);
+  const loaderRef = useRef<HTMLDivElement>(null);
 
   // Real generation result
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
@@ -216,6 +217,19 @@ export default function HomeDashboardPage() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating]);
+
+  // When generation starts (writing lyrics OR composing the song), bring the
+  // loader into view so the user immediately sees the progress screen instead
+  // of a blank/scrolled area.
+  useEffect(() => {
+    if (isGenerating || isGeneratingLyrics) {
+      const id = setTimeout(
+        () => loaderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+        80
+      );
+      return () => clearTimeout(id);
+    }
+  }, [isGenerating, isGeneratingLyrics]);
 
   // Save the brief and continue to sign-in, then the credit step.
   const handleGetSong = () => {
@@ -602,10 +616,18 @@ export default function HomeDashboardPage() {
         {step === 4 && (
           <div className="animate-fade-in-up">
             {isGeneratingLyrics ? (
-              /* Writing lyrics */
-              <div className="text-center" style={{ padding: 'var(--space-2xl) 0' }}>
-                <div className="spinner-lg" style={{ margin: '0 auto var(--space-lg)' }} />
-                <h3 className="heading-md">✍️ {t('lyrics.writing')}</h3>
+              /* Writing lyrics — expressive loader */
+              <div ref={loaderRef} className="song-loader animate-fade-in">
+                <div className="song-loader-eq" aria-hidden="true">
+                  <span /><span /><span /><span /><span /><span /><span />
+                </div>
+                <h3 className="heading-md song-loader-title">✍️ {t('lyrics.writing')}</h3>
+                <div className="song-loader-track" aria-hidden="true" />
+                <p className="song-loader-hint">
+                  {isEn
+                    ? '⏳ Crafting personalized lyrics from your story…'
+                    : '⏳ Creando letras personalizadas a partir de tu historia…'}
+                </p>
               </div>
             ) : lyricsError ? (
               /* Lyrics error */
@@ -653,30 +675,33 @@ export default function HomeDashboardPage() {
         {step === 5 && (
           <div className="animate-fade-in-up">
             {isGenerating ? (
-              /* Generating Animation Screen */
-              <div className="text-center" style={{ padding: 'var(--space-2xl) 0' }}>
-                <div className="spinner-lg" style={{ margin: '0 auto var(--space-xl)' }} />
-                <h3 className="heading-md">{loadingSteps[generatingStep]}</h3>
-                <div
-                  style={{
-                    width: '100%',
-                    maxWidth: 320,
-                    height: 6,
-                    background: 'var(--bg-glass)',
-                    borderRadius: 'var(--radius-full)',
-                    margin: 'var(--space-md) auto 0',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${((generatingStep + 1) / loadingSteps.length) * 100}%`,
-                      height: '100%',
-                      background: 'var(--gradient-warm)',
-                      transition: 'width 0.6s ease',
-                    }}
-                  />
+              /* Generating Animation Screen — expressive music-generation loader */
+              <div ref={loaderRef} className="song-loader animate-fade-in">
+                <div className="song-loader-eq" aria-hidden="true">
+                  <span /><span /><span /><span /><span /><span /><span />
                 </div>
+
+                <h3 className="heading-md song-loader-title">{loadingSteps[generatingStep]}</h3>
+
+                <div className="song-loader-track" aria-hidden="true" />
+
+                <ul className="song-loader-steps">
+                  {loadingSteps.map((s, i) => {
+                    const state = i < generatingStep ? 'done' : i === generatingStep ? 'active' : 'upcoming';
+                    return (
+                      <li key={i} className={state}>
+                        <span className="sls-badge">{state === 'done' ? '✓' : state === 'active' ? '' : i + 1}</span>
+                        <span>{s}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <p className="song-loader-hint">
+                  {isEn
+                    ? '⏳ This usually takes 30–60 seconds. Please keep this page open.'
+                    : '⏳ Esto suele tardar 30–60 segundos. No cierres esta página.'}
+                </p>
               </div>
             ) : generateError ? (
               /* Generation Error Screen */
