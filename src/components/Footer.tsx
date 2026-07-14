@@ -39,7 +39,7 @@ export default function Footer() {
           <div>
             <h4 className="footer-heading">{t('footer.contact')}</h4>
             <ul className="footer-links">
-              <li><a href="mailto:hello@cantame.com">hello@cantame.com</a></li>
+              <li><a href="mailto:hello@cantame.app">hello@cantame.app</a></li>
             </ul>
           </div>
         </div>
