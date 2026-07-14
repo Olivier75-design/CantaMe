@@ -32,6 +32,19 @@ create table if not exists public.payments (
 );
 
 
+-- 1d) Traffic: server-side page-view counter (populated by middleware.ts).
+--     Ad-blocker-proof analytics — visible in the Admin → Traffic tab.
+create table if not exists public.page_views (
+  id bigint generated always as identity primary key,
+  path text,
+  referrer text,
+  country text,
+  device text,
+  created_at timestamptz default now()
+);
+create index if not exists page_views_created_at_idx on public.page_views (created_at desc);
+
+
 -- ── Everything below is ONLY needed if you do NOT set the service_role key ──
 
 -- 2) Storage policies: allow read/insert/update on the "songs" bucket.

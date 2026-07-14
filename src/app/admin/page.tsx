@@ -39,6 +39,18 @@ interface MusicStyle {
   audioUrl: string;
 }
 
+interface Analytics {
+  total: number;
+  today: number;
+  week: number;
+  month: number;
+  topPaths: { name: string; count: number }[];
+  topCountries: { name: string; count: number }[];
+  devices: { name: string; count: number }[];
+  series: { date: string; count: number }[];
+  error?: string;
+}
+
 const ALL_STATUSES = ['PAID', 'IN_PRODUCTION', 'READY', 'DELIVERED', 'REVISION_REQUESTED'];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -52,7 +64,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function AdminPage() {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'orders' | 'styles'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'styles' | 'traffic'>('orders');
+
+  // Traffic (server-side, ad-blocker-proof analytics)
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
 
   // Orders State
   const [orders, setOrders] = useState<Order[]>([]);
@@ -95,10 +111,22 @@ export default function AdminPage() {
     setLoadingStyles(false);
   }, []);
 
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const res = await fetch('/api/analytics');
+      const data = await res.json();
+      setAnalytics(data);
+    } catch {
+      setAnalytics(null);
+    }
+    setLoadingAnalytics(false);
+  }, []);
+
   useEffect(() => {
     fetchOrders();
     fetchStyles();
-  }, [fetchOrders, fetchStyles]);
+    fetchAnalytics();
+  }, [fetchOrders, fetchStyles, fetchAnalytics]);
 
   const filteredOrders = filterStatus === 'all'
     ? orders
@@ -202,6 +230,34 @@ export default function AdminPage() {
     .filter((o) => new Date(o.createdAt) >= monthStart)
     .reduce((sum, o) => sum + o.price, 0);
 
+  const isEn = t('hero.stats') === 'songs created';
+
+  const BreakdownCard = ({ title, items }: { title: string; items: { name: string; count: number }[] }) => {
+    const max = Math.max(1, ...items.map((i) => i.count));
+    return (
+      <div className="card">
+        <h3 className="heading-sm mb-lg">{title}</h3>
+        {items.length === 0 ? (
+          <p className="body-sm" style={{ color: 'var(--text-muted)' }}>{isEn ? 'No data yet' : 'Sin datos aún'}</p>
+        ) : (
+          <div className="flex flex-col gap-sm">
+            {items.map((it) => (
+              <div key={it.name}>
+                <div className="flex justify-between" style={{ fontSize: '0.85rem', marginBottom: 4 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '75%' }}>{it.name}</span>
+                  <span style={{ fontWeight: 700 }}>{it.count}</span>
+                </div>
+                <div style={{ height: 6, background: 'var(--bg-glass)', borderRadius: 999, overflow: 'hidden' }}>
+                  <div style={{ width: `${(it.count / max) * 100}%`, height: '100%', background: 'var(--gradient-warm)' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="section">
       <div className="container">
@@ -223,6 +279,12 @@ export default function AdminPage() {
                 onClick={() => setActiveTab('styles')}
               >
                 🎸 {t('hero.stats') === 'songs created' ? 'Music Styles' : 'Estilos'}
+              </button>
+              <button
+                className={activeTab === 'traffic' ? 'active' : ''}
+                onClick={() => setActiveTab('traffic')}
+              >
+                📊 {t('hero.stats') === 'songs created' ? 'Traffic' : 'Tráfico'}
               </button>
             </div>
           </div>
@@ -582,6 +644,69 @@ export default function AdminPage() {
                 </form>
               </div>
 
+            </div>
+          )}
+
+          {/* TAB 3: TRAFFIC (server-side, ad-blocker-proof) */}
+          {activeTab === 'traffic' && (
+            <div className="animate-fade-in">
+              {loadingAnalytics ? (
+                <div className="text-center"><div className="spinner-lg" style={{ margin: '2rem auto' }} /></div>
+              ) : analytics?.error === 'no_table' ? (
+                <div className="card text-center" style={{ padding: 'var(--space-2xl)' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 'var(--space-sm)' }}>📊</div>
+                  <h3 className="heading-md mb-sm">{isEn ? 'Traffic tracking not set up yet' : 'Rastreo de tráfico aún no configurado'}</h3>
+                  <p className="body-md">{isEn ? 'Run the page_views migration in Supabase (supabase-setup.sql → section 1d), then reload this page.' : 'Ejecuta la migración page_views en Supabase (supabase-setup.sql → sección 1d) y recarga esta página.'}</p>
+                </div>
+              ) : analytics ? (
+                <>
+                  <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)' }}>
+                    🛡️ {isEn ? 'Server-side counting — not affected by ad blockers.' : 'Conteo del lado del servidor — no afectado por bloqueadores.'}
+                  </p>
+
+                  {/* Metric cards */}
+                  <div className="mb-xl" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-md)' }}>
+                    {[
+                      { label: isEn ? 'Today' : 'Hoy', value: analytics.today, hi: true },
+                      { label: isEn ? 'Last 7 days' : 'Últimos 7 días', value: analytics.week },
+                      { label: isEn ? 'Last 30 days' : 'Últimos 30 días', value: analytics.month },
+                      { label: isEn ? 'All time' : 'Total', value: analytics.total },
+                    ].map((m, i) => (
+                      <div key={i} className="card" style={{ background: m.hi ? 'var(--gradient-card)' : undefined }}>
+                        <div className="body-sm mb-sm">{m.label}</div>
+                        <div className="heading-xl text-gradient">{m.value}</div>
+                        <div className="body-sm">{isEn ? 'visits' : 'visitas'}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 7-day bar chart */}
+                  <div className="card mb-xl">
+                    <h3 className="heading-sm mb-lg">{isEn ? 'Visits — last 7 days' : 'Visitas — últimos 7 días'}</h3>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 160 }}>
+                      {analytics.series.map((d) => {
+                        const max = Math.max(1, ...analytics.series.map((s) => s.count));
+                        return (
+                          <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%', justifyContent: 'flex-end' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700 }}>{d.count}</div>
+                            <div style={{ width: '100%', height: `${(d.count / max) * 100}%`, minHeight: 4, background: 'var(--gradient-warm)', borderRadius: '6px 6px 0 0' }} />
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(d.date).toLocaleDateString(undefined, { weekday: 'short' })}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Breakdowns */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-lg)' }}>
+                    <BreakdownCard title={isEn ? 'Top pages' : 'Páginas más vistas'} items={analytics.topPaths} />
+                    <BreakdownCard title={isEn ? 'Countries' : 'Países'} items={analytics.topCountries} />
+                    <BreakdownCard title={isEn ? 'Devices' : 'Dispositivos'} items={analytics.devices} />
+                  </div>
+                </>
+              ) : (
+                <div className="card text-center" style={{ padding: 'var(--space-2xl)' }}>{isEn ? 'Failed to load traffic.' : 'No se pudo cargar el tráfico.'}</div>
+              )}
             </div>
           )}
 
