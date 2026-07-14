@@ -218,17 +218,20 @@ export default function HomeDashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating]);
 
-  // When generation starts (writing lyrics OR composing the song), bring the
-  // loader into view so the user immediately sees the progress screen instead
-  // of a blank/scrolled area.
+  // When generation starts (writing lyrics OR composing the song), scroll UP to
+  // the top of the generation area (just below the sticky header) so the user
+  // sees the progress screen instead of whatever was scrolled into view.
   useEffect(() => {
-    if (isGenerating || isGeneratingLyrics) {
-      const id = setTimeout(
-        () => loaderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
-        80
-      );
-      return () => clearTimeout(id);
-    }
+    if (!(isGenerating || isGeneratingLyrics)) return;
+    const id = setTimeout(() => {
+      const el = loaderRef.current || document.getElementById('studio');
+      if (!el) return;
+      const nav = document.getElementById('main-nav');
+      const headerOffset = (nav?.getBoundingClientRect().height || 72) + 16;
+      const y = el.getBoundingClientRect().top + window.scrollY - headerOffset;
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    }, 150);
+    return () => clearTimeout(id);
   }, [isGenerating, isGeneratingLyrics]);
 
   // Save the brief and continue to sign-in, then the credit step.
