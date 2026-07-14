@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { verifyAdminRequest } from '@/lib/admin';
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,6 +38,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || undefined;
     const email = searchParams.get('email') || undefined;
+
+    // Listing ALL orders (no email filter) exposes every customer's data, so it
+    // is admin-only. The per-user dashboard always passes ?email=.
+    if (!email) {
+      if (!(await verifyAdminRequest(request))) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
 
     const orders = await db.getOrders({ status, email });
     return NextResponse.json(orders);

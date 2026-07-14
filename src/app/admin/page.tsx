@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
+import { getSupabaseBrowser } from '@/lib/supabase';
+import { isAdminEmail } from '@/lib/admin';
 import AudioPlayer from '@/components/AudioPlayer';
 
 interface Revision {
@@ -64,11 +68,27 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function AdminPage() {
   const { t } = useLanguage();
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const isAdmin = isAdminEmail(user?.email);
+
   const [activeTab, setActiveTab] = useState<'orders' | 'styles' | 'traffic'>('orders');
 
   // Traffic (server-side, ad-blocker-proof analytics)
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(true);
+
+  // Non-admins are redirected away; admin API routes also verify server-side.
+  useEffect(() => {
+    if (!authLoading && !isAdmin) router.replace('/dashboard');
+  }, [authLoading, isAdmin, router]);
+
+  // Attach the Supabase access token so admin API routes can verify the caller.
+  const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const { data } = await getSupabaseBrowser().auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, []);
 
   // Orders State
   const [orders, setOrders] = useState<Order[]>([]);
@@ -91,14 +111,14 @@ export default function AdminPage() {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await fetch('/api/orders');
+      const res = await fetch('/api/orders', { headers: await authHeaders() });
       const data = await res.json();
       setOrders(Array.isArray(data) ? data : []);
     } catch {
       setOrders([]);
     }
     setLoadingOrders(false);
-  }, []);
+  }, [authHeaders]);
 
   const fetchStyles = useCallback(async () => {
     try {
@@ -113,20 +133,21 @@ export default function AdminPage() {
 
   const fetchAnalytics = useCallback(async () => {
     try {
-      const res = await fetch('/api/analytics');
+      const res = await fetch('/api/analytics', { headers: await authHeaders() });
       const data = await res.json();
       setAnalytics(data);
     } catch {
       setAnalytics(null);
     }
     setLoadingAnalytics(false);
-  }, []);
+  }, [authHeaders]);
 
   useEffect(() => {
+    if (!isAdmin) return;
     fetchOrders();
     fetchStyles();
     fetchAnalytics();
-  }, [fetchOrders, fetchStyles, fetchAnalytics]);
+  }, [isAdmin, fetchOrders, fetchStyles, fetchAnalytics]);
 
   const filteredOrders = filterStatus === 'all'
     ? orders
@@ -135,7 +156,7 @@ export default function AdminPage() {
   const updateOrderStatus = async (orderId: string, status: string, audioUrl?: string, instrumentalUrl?: string) => {
     await fetch(`/api/orders/${orderId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ status, audioUrl, instrumentalUrl }),
     });
     fetchOrders();
@@ -154,7 +175,7 @@ export default function AdminPage() {
         // Edit Style
         const res = await fetch(`/api/styles/${editingStyle.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
           body: JSON.stringify(styleForm),
         });
         if (res.ok) {
@@ -164,7 +185,7 @@ export default function AdminPage() {
         // Add Style
         await fetch('/api/styles', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
           body: JSON.stringify(styleForm),
         });
       }
@@ -203,6 +224,7 @@ export default function AdminPage() {
     try {
       const res = await fetch(`/api/styles/${id}`, {
         method: 'DELETE',
+        headers: await authHeaders(),
       });
       if (res.ok) {
         fetchStyles();
@@ -231,6 +253,19 @@ export default function AdminPage() {
     .reduce((sum, o) => sum + o.price, 0);
 
   const isEn = t('hero.stats') === 'songs created';
+
+  // Access control: show a spinner while auth resolves, block non-admins.
+  if (authLoading) {
+    return <div className="section text-center"><div className="spinner-lg" style={{ margin: '4rem auto' }} /></div>;
+  }
+  if (!isAdmin) {
+    return (
+      <div className="section text-center" style={{ minHeight: '50vh' }}>
+        <h1 className="heading-lg mb-md">🔒 {isEn ? 'Admins only' : 'Solo administradores'}</h1>
+        <p className="body-md">{isEn ? 'Redirecting…' : 'Redirigiendo…'}</p>
+      </div>
+    );
+  }
 
   const BreakdownCard = ({ title, items }: { title: string; items: { name: string; count: number }[] }) => {
     const max = Math.max(1, ...items.map((i) => i.count));

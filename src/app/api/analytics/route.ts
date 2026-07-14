@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
+import { verifyAdminRequest } from '@/lib/admin';
 
 // Aggregated, server-side traffic stats from the `page_views` table (populated
 // by middleware.ts). Ad-blocker-proof: the data is collected on the server.
@@ -25,7 +26,10 @@ function topBy(rows: Row[], key: keyof Row, limit = 8) {
     .map(([name, count]) => ({ name, count }));
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!(await verifyAdminRequest(request))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   try {
     const supabase = getSupabaseServer();
     const now = Date.now();

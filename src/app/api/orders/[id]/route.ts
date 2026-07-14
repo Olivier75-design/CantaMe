@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { generateSongFile } from '@/lib/generateSong';
 import { spendCredits, addCredits } from '@/lib/credits';
 import { CREDITS } from '@/lib/constants';
+import { verifyAdminRequest } from '@/lib/admin';
 
 // Revisions regenerate the song on the spot -> Node runtime, allow a few minutes.
 export const runtime = 'nodejs';
@@ -142,8 +143,11 @@ export async function PUT(
       return NextResponse.json(updated);
     }
 
-    // Handle status update (admin)
+    // Handle status update (admin only).
     if (body.status) {
+      if (!(await verifyAdminRequest(request))) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
       const updateData: Record<string, string> = { status: body.status };
       if (body.audioUrl) updateData.audioUrl = body.audioUrl;
       if (body.instrumentalUrl) updateData.instrumentalUrl = body.instrumentalUrl;
