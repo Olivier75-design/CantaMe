@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCredits, addCredits } from '@/lib/credits';
-import { CREDITS } from '@/lib/constants';
+import { getCredits } from '@/lib/credits';
 
 export const runtime = 'nodejs';
 
@@ -18,19 +17,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/credits { userId, quantity } -> simulate purchase, add credits
-export async function POST(request: NextRequest) {
-  try {
-    const { userId, quantity } = await request.json();
-    if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-
-    const qty = Math.max(1, Math.floor(Number(quantity) || 1));
-    const credits = await addCredits(userId, qty);
-    const pack = CREDITS.packs.find((p) => p.credits === qty);
-    const charged = pack ? pack.price : Math.ceil(qty * 0.05);
-    return NextResponse.json({ success: true, credits, charged });
-  } catch (error) {
-    console.error('Credits POST error:', error);
-    return NextResponse.json({ error: 'Failed to add credits' }, { status: 500 });
-  }
-}
+// NOTE: there is intentionally NO POST handler. Credits are ONLY granted by
+// creditForPayment() after a Moneroo payment is verified. A public "add
+// credits" endpoint would let anyone mint unlimited credits for free.

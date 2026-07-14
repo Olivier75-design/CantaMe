@@ -45,8 +45,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ checkoutUrl, paymentId: id });
   } catch (e) {
+    // Log the real cause server-side; return a generic message to the client.
     const msg = e instanceof Error ? e.message : 'Payment init failed';
     console.error('payments/create error:', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Could not start payment. Please try again.' }, { status: 500 });
   }
 }

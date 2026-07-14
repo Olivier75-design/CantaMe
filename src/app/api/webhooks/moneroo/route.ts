@@ -14,15 +14,21 @@ export async function POST(request: NextRequest) {
   try {
     const raw = await request.text();
 
-    if (WEBHOOK_SECRET) {
-      const sig = request.headers.get('x-moneroo-signature') || '';
-      const expected = crypto.createHmac('sha256', WEBHOOK_SECRET).update(raw).digest('hex');
-      const ok = sig.length === expected.length &&
-        crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
-      if (!ok) {
-        console.warn('Moneroo webhook: bad signature');
-        return NextResponse.json({ error: 'invalid signature' }, { status: 401 });
-      }
+    // Fail closed: never process an unsigned/unverified webhook. If the secret
+    // isn't configured, reject (crediting still happens via the verified
+    // /payments/callback path).
+    if (!WEBHOOK_SECRET) {
+      console.error('Moneroo webhook rejected: MONEROO_WEBHOOK_SECRET is not configured');
+      return NextResponse.json({ error: 'webhook not configured' }, { status: 503 });
+    }
+    const sig = request.headers.get('x-moneroo-signature') || '';
+    const expected = crypto.createHmac('sha256', WEBHOOK_SECRET).update(raw).digest('hex');
+    const ok =
+      sig.length === expected.length &&
+      crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+    if (!ok) {
+      console.warn('Moneroo webhook: bad signature');
+      return NextResponse.json({ error: 'invalid signature' }, { status: 401 });
     }
 
     const body = JSON.parse(raw || '{}');

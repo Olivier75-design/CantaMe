@@ -18,8 +18,10 @@ export async function POST(request: NextRequest) {
     const result = await generateSongFile({ ...body, preview: true });
     return NextResponse.json(result);
   } catch (error: unknown) {
+    // Log the real cause server-side; return a generic message to the client
+    // so internal details (provider errors, URLs, keys) aren't leaked.
     const message = error instanceof Error ? error.message : 'Generation failed';
     console.error('generate-song error:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Generation failed. Please try again.' }, { status: 500 });
   }
 }

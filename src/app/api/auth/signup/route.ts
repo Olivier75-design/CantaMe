@@ -27,18 +27,18 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
-      // Account already exists (e.g. an older unconfirmed sign-up). Recover it:
-      // confirm the email and reset the password to what was just entered so
-      // the user can sign in right away.
+      // Account already exists. SECURITY: never change the password of an
+      // existing account from this public, unauthenticated route — doing so
+      // would let anyone reset any user's password by email (account takeover).
+      // We only confirm the email (no SMTP is configured) so a legitimate owner
+      // isn't blocked; the caller must still know the correct password to sign
+      // in, so an attacker gains nothing.
       if (/already|registered|exists/i.test(error.message)) {
         const existing = await findUserByEmail(supabase, email);
         if (existing) {
-          const { error: upErr } = await supabase.auth.admin.updateUserById(existing.id, {
-            password,
-            email_confirm: true,
-            user_metadata: { full_name: name || existing.user_metadata?.full_name || '' },
-          });
-          if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 });
+          if (!existing.email_confirmed_at) {
+            await supabase.auth.admin.updateUserById(existing.id, { email_confirm: true });
+          }
           return NextResponse.json({ success: true, recovered: true });
         }
       }

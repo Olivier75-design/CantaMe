@@ -162,8 +162,9 @@ export async function PUT(
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error: unknown) {
+    // Log the real cause server-side; return a generic message to the client.
     const message = error instanceof Error ? error.message : 'Failed to update order';
     console.error('Error updating order:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update order. Please try again.' }, { status: 500 });
   }
 }
