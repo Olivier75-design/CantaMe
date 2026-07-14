@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase';
+import { getSiteUrl } from '@/lib/site';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -98,7 +99,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/dashboard`,
+        // getSiteUrl() avoids the "null/dashboard" redirect that in-app
+        // browsers produce; prefers NEXT_PUBLIC_SITE_URL when set.
+        redirectTo: `${getSiteUrl()}/dashboard`,
       },
     });
     if (error) return { error: error.message };
