@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateSongFile, type GenerateInput } from '@/lib/generateSong';
+import { rateLimit, clientIp } from '@/lib/rateLimit';
 
 // Writes files + uses Node APIs -> Node.js runtime. Generation can take a couple of minutes.
 export const runtime = 'nodejs';
@@ -8,6 +9,10 @@ export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
+    // Public (guest preview) + calls the paid MiniMax music API -> rate-limit by IP.
+    if (!(await rateLimit(`gensong:${clientIp(request)}`, 5, 60))) {
+      return NextResponse.json({ error: 'Too many requests. Please slow down.' }, { status: 429 });
+    }
     const body = (await request.json()) as GenerateInput;
     if (!body.recipientName || !body.style) {
       return NextResponse.json({ error: 'recipientName et style sont requis.' }, { status: 400 });

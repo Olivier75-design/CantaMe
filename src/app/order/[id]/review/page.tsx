@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
+import { authHeaders } from '@/lib/authClient';
 import AudioPlayer from '@/components/AudioPlayer';
 
 interface OrderData {
@@ -42,7 +43,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     try {
       const res = await fetch(`/api/orders/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ action: 'request_revision', notes }),
       });
       if (res.status === 402) {

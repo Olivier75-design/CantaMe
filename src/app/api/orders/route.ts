@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyAdminRequest } from '@/lib/admin';
+import { verifyAdminRequest, getUserFromRequest, isAdminEmail } from '@/lib/admin';
 
+// Create an order. Identity (owner id + email) is taken from the authenticated
+// session, never from the body — otherwise anyone could create orders in
+// another user's name.
 export async function POST(request: NextRequest) {
   try {
+    const user = await getUserFromRequest(request);
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const body = await request.json();
 
     const order = await db.createOrder({
-      userId: body.userId || null,
-      clientEmail: body.clientEmail || '',
+      userId: user.id,
+      clientEmail: user.email || '',
       recipientName: body.recipientName || '',
       relation: body.relation || '',
       occasion: body.occasion || '',
@@ -39,10 +45,16 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || undefined;
     const email = searchParams.get('email') || undefined;
 
-    // Listing ALL orders (no email filter) exposes every customer's data, so it
-    // is admin-only. The per-user dashboard always passes ?email=.
+    const user = await getUserFromRequest(request);
+    const admin = isAdminEmail(user?.email);
+
     if (!email) {
-      if (!(await verifyAdminRequest(request))) {
+      // Listing ALL orders exposes every customer's data → admin only.
+      if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    } else if (!admin) {
+      // A user may only list their OWN orders. Non-admins can't query by an
+      // arbitrary email, which previously leaked other customers' orders.
+      if (!user || (user.email || '').toLowerCase() !== email.toLowerCase()) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
     }

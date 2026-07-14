@@ -3,11 +3,16 @@ import { db } from '@/lib/db';
 import { generateSongFile } from '@/lib/generateSong';
 import { spendCredits, addCredits } from '@/lib/credits';
 import { CREDITS } from '@/lib/constants';
-import { verifyAdminRequest } from '@/lib/admin';
+import { verifyAdminRequest, getUserFromRequest } from '@/lib/admin';
+import { rateLimit } from '@/lib/rateLimit';
 
 // Revisions regenerate the song on the spot -> Node runtime, allow a few minutes.
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+
+function ownsOrder(order: { user_id?: string | null; userId?: string }, userId: string) {
+  return (order.user_id || order.userId) === userId;
+}
 
 export async function GET(
   _request: NextRequest,
@@ -41,12 +46,21 @@ export async function PUT(
     // returns immediately if the song is already READY. Composes from the
     // exact (user-edited) lyrics stored on the order.
     if (body.action === 'generate_full') {
+      const user = await getUserFromRequest(request);
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
       const order = await db.getOrderById(id);
       if (!order) {
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
+      if (!ownsOrder(order, user.id)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
       if (order.status === 'READY' && (order.audio_url || order.audioUrl)) {
         return NextResponse.json(order);
+      }
+      if (!(await rateLimit(`gen:${user.id}`, 20, 60))) {
+        return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
       }
 
       let anecdote1 = '';
@@ -82,14 +96,23 @@ export async function PUT(
 
     // Live revision: regenerate the song NOW from the saved order data + the notes.
     if (body.action === 'request_revision') {
+      const user = await getUserFromRequest(request);
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
       const order = await db.getOrderById(id);
       if (!order) {
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
+      if (!ownsOrder(order, user.id)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      if (!(await rateLimit(`rev:${user.id}`, 10, 60))) {
+        return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+      }
 
       const notes: string = body.notes || '';
 
-      // Revisions cost 1 credit. Charge the order owner before regenerating.
+      // Revisions cost 1 credit. Charge the (verified) owner before regenerating.
       const ownerId = order.user_id || order.userId;
       if (ownerId) {
         const spend = await spendCredits(ownerId, CREDITS.perRevision);

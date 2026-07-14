@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { getSupabaseServer } from '@/lib/supabase';
 import { CREDITS } from '@/lib/constants';
+import { rateLimit, clientIp } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +11,11 @@ export const runtime = 'nodejs';
 // buyer can sign in and reach their dashboard immediately after paying.
 export async function POST(request: NextRequest) {
   try {
+    // Throttle to slow account-creation abuse and credential guessing.
+    if (!(await rateLimit(`signup:${clientIp(request)}`, 8, 60))) {
+      return NextResponse.json({ error: 'Too many attempts. Please try again shortly.' }, { status: 429 });
+    }
+
     const { email, password, name } = await request.json();
 
     if (!email || !password) {

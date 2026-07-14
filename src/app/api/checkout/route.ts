@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { spendCredits } from '@/lib/credits';
+import { spendCredits, addCredits } from '@/lib/credits';
 import { CREDITS } from '@/lib/constants';
+import { getUserFromRequest } from '@/lib/admin';
 
 export const runtime = 'nodejs';
 
@@ -9,19 +10,26 @@ export const runtime = 'nodejs';
 // generated afterwards in the background (see the `generate_full` action in
 // /api/orders/[id]), so the order is marked IN_PRODUCTION here and flips to
 // READY once generation completes. Returns 402 when the user has no credits.
+//
+// The spender is derived from the authenticated session (never the body), and
+// the order must belong to that user — otherwise anyone could spend another
+// user's credits or finalize someone else's order.
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { orderId, userId } = body;
+    const user = await getUserFromRequest(request);
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const { orderId } = await request.json();
     if (!orderId) {
       return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
     }
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+
+    const existing = await db.getOrderById(orderId);
+    if (!existing || (existing.user_id || existing.userId) !== user.id) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    const spend = await spendCredits(userId, CREDITS.perSong);
+    const spend = await spendCredits(user.id, CREDITS.perSong);
     if (!spend.ok) {
       return NextResponse.json(
         { error: 'no_credits', credits: spend.credits },
@@ -36,8 +44,7 @@ export async function POST(request: NextRequest) {
 
     if (!order) {
       // Refund the credit if the order could not be finalized.
-      const { addCredits } = await import('@/lib/credits');
-      await addCredits(userId, CREDITS.perSong);
+      await addCredits(user.id, CREDITS.perSong);
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 

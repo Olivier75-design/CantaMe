@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
+import { authHeaders } from '@/lib/authClient';
 import { CREDITS } from '@/lib/constants';
 
 interface OrderData {
@@ -48,7 +49,7 @@ export default function CheckoutPage() {
   const refreshCredits = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const r = await fetch(`/api/credits?userId=${user.id}`);
+      const r = await fetch('/api/credits', { headers: await authHeaders() });
       const d = await r.json();
       setCredits(typeof d.credits === 'number' ? d.credits : 0);
     } catch {
@@ -64,11 +65,9 @@ export default function CheckoutPage() {
   const createOrder = async (): Promise<string | null> => {
     const res = await fetch('/api/orders', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({
         ...orderData,
-        clientEmail: user?.email,
-        userId: user?.id || null,
         tier: 'credit',
         price: 2,
       }),
@@ -81,8 +80,8 @@ export default function CheckoutPage() {
   const finalize = async (orderId: string): Promise<boolean> => {
     const res = await fetch('/api/checkout', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId, userId: user?.id }),
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({ orderId }),
     });
     if (res.status === 402) {
       const d = await res.json();
@@ -119,11 +118,9 @@ export default function CheckoutPage() {
       const pack = CREDITS.packs.find((p) => p.credits === quantity) || CREDITS.packs[0];
       const res = await fetch('/api/payments/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({
-          userId: user?.id,
           packId: pack.id,
-          email: user?.email,
           name: user?.user_metadata?.full_name || '',
         }),
       });

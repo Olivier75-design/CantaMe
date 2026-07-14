@@ -1,18 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initializePayment, MONEROO_CURRENCY } from '@/lib/moneroo';
 import { getSupabaseServer } from '@/lib/supabase';
+import { getUserFromRequest } from '@/lib/admin';
 import { CREDITS } from '@/lib/constants';
+import { rateLimit } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
-// Start a Moneroo hosted-checkout to buy a credit pack.
-// Body: { userId, packId, email, name } -> { checkoutUrl }
+// Start a Moneroo hosted-checkout to buy a credit pack. Identity is taken from
+// the session; the pack (price + credits) is resolved server-side from packId.
+// Body: { packId, name } -> { checkoutUrl }
 export async function POST(request: NextRequest) {
   try {
-    const { userId, packId, email, name } = await request.json();
-    if (!userId || !email) {
-      return NextResponse.json({ error: 'userId and email are required' }, { status: 400 });
+    const user = await getUserFromRequest(request);
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    if (!(await rateLimit(`pay:${user.id}`, 10, 60))) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
     }
+
+    const userId = user.id;
+    const email = user.email || '';
+    const { packId, name } = await request.json();
 
     // Price + credits are resolved server-side from the pack id (never trust the client).
     const pack = CREDITS.packs.find((p) => p.id === packId) || CREDITS.packs[0];

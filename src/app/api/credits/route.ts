@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCredits } from '@/lib/credits';
+import { getUserFromRequest } from '@/lib/admin';
 
 export const runtime = 'nodejs';
 
-// GET /api/credits?userId=... -> current balance
+// GET /api/credits -> the AUTHENTICATED user's balance. The user id comes from
+// the session token, not the query, so nobody can read another user's balance.
 export async function GET(request: NextRequest) {
   try {
-    const userId = new URL(request.url).searchParams.get('userId');
-    if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+    const user = await getUserFromRequest(request);
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const credits = await getCredits(userId);
+    const credits = await getCredits(user.id);
     return NextResponse.json({ credits });
   } catch (error) {
     console.error('Credits GET error:', error);

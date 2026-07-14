@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { getSupabaseBrowser } from '@/lib/supabase';
+import { authHeaders } from '@/lib/authClient';
 import { MUSIC_STYLES, OCCASIONS, CREDITS } from '@/lib/constants';
 
 interface Order {
@@ -92,7 +93,9 @@ export default function DashboardPage() {
 
   const refetchOrders = useCallback(async () => {
     if (!user?.email) return;
-    const o = await fetch(`/api/orders?email=${encodeURIComponent(user.email)}`)
+    const o = await fetch(`/api/orders?email=${encodeURIComponent(user.email)}`, {
+      headers: await authHeaders(),
+    })
       .then((r) => r.json())
       .catch(() => []);
     setOrders(Array.isArray(o) ? o : []);
@@ -107,7 +110,7 @@ export default function DashboardPage() {
     try {
       const r = await fetch(`/api/orders/${orderId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ action: 'generate_full' }),
       });
       if (r.ok) {
@@ -136,19 +139,17 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user?.email) return;
-    fetch(`/api/orders?email=${encodeURIComponent(user.email)}`)
-      .then((r) => r.json())
-      .then((d) => setOrders(Array.isArray(d) ? d : []))
-      .catch(() => {})
-      .finally(() => setLoadingOrders(false));
-  }, [user]);
+    refetchOrders().finally(() => setLoadingOrders(false));
+  }, [user, refetchOrders]);
 
   useEffect(() => {
     if (!user?.id) return;
-    fetch(`/api/credits?userId=${user.id}`)
-      .then((r) => r.json())
-      .then((d) => setCredits(typeof d.credits === 'number' ? d.credits : 0))
-      .catch(() => setCredits(0));
+    (async () => {
+      const d = await fetch('/api/credits', { headers: await authHeaders() })
+        .then((r) => r.json())
+        .catch(() => ({}));
+      setCredits(typeof d.credits === 'number' ? d.credits : 0);
+    })();
   }, [user]);
 
   // Show the "creating your song" screen immediately if an order is pending.
@@ -175,18 +176,19 @@ export default function DashboardPage() {
         // generated fresh in the background right after purchase.
         const brief = JSON.parse(stored);
         delete brief.audioUrl;
+        const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) };
         const res = await fetch('/api/orders', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...brief, clientEmail: user.email, userId: user.id, tier: 'credit', price: 0 }),
+          headers,
+          body: JSON.stringify({ ...brief, tier: 'credit', price: 0 }),
         });
         const order = await res.json();
         if (!order?.id) throw new Error('order');
 
         const fin = await fetch('/api/checkout', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId: order.id, userId: user.id }),
+          headers,
+          body: JSON.stringify({ orderId: order.id }),
         });
         if (fin.status === 402) { router.push('/checkout'); return; }
 
@@ -196,7 +198,7 @@ export default function DashboardPage() {
         // background-generation manager below composes the full song.
         await Promise.all([
           refetchOrders(),
-          fetch(`/api/credits?userId=${user.id}`)
+          fetch('/api/credits', { headers: await authHeaders() })
             .then((r) => r.json())
             .then((c) => { if (typeof c.credits === 'number') setCredits(c.credits); }),
         ]);
@@ -292,11 +294,9 @@ export default function DashboardPage() {
       const pack = CREDITS.packs.find((p) => p.credits === buyQty) || CREDITS.packs[0];
       const r = await fetch('/api/payments/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({
-          userId: user.id,
           packId: pack.id,
-          email: user.email,
           name: user.user_metadata?.full_name || '',
         }),
       });
