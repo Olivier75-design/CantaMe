@@ -134,7 +134,7 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
                   )}
 
                   <div className="sh-actions">
-                    <a href={audio} download className="btn btn-primary"><span>⬇</span> {t('order.downloadMp3')}</a>
+                    <a href={`/api/orders/${id}/download`} className="btn btn-primary"><span>⬇</span> {t('order.downloadMp3')}</a>
                     <Link href={`/order/${id}/share`} className="btn btn-outline"><span>🔗</span> {t('result.shareBtn')}</Link>
                     <Link href="/dashboard" className="btn btn-outline"><span>♥</span> {t('result.saveSong')}</Link>
                   </div>

@@ -84,7 +84,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               showVisualizer
             />
             <div className="flex gap-md mt-lg justify-center" style={{ flexWrap: 'wrap' }}>
-              <a href={newAudioUrl} download className="btn btn-primary btn-sm">
+              <a href={`/api/orders/${id}/download`} className="btn btn-primary btn-sm">
                 {t('order.downloadMp3')} 📥
               </a>
               <a href={`/order/${id}`} className="btn btn-outline btn-sm">

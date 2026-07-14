@@ -399,7 +399,7 @@ export default function DashboardPage() {
           ) : (
             <>
               <Link className="ico" href={`/order/${o.id}/share`} title={t('dashboard.share')}>🔗</Link>
-              {audio && <a className="ico" href={audio} download title={t('dashboard.download')}>⬇</a>}
+              {audio && <a className="ico" href={`/api/orders/${o.id}/download`} title={t('dashboard.download')}>⬇</a>}
               <Link className="ico" href={`/order/${o.id}/review`} title={t('dashboard.revise')}>⋯</Link>
             </>
           )}
@@ -547,7 +547,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="np-actions">
                             <Link href={`/order/${nowPlaying.id}/share`} className="btn btn-outline btn-sm">🔗 {t('dashboard.share')}</Link>
-                            {audioOf(nowPlaying) && <a href={audioOf(nowPlaying)} download className="btn btn-primary btn-sm">⬇ {t('dashboard.download')}</a>}
+                            {audioOf(nowPlaying) && <a href={`/api/orders/${nowPlaying.id}/download`} className="btn btn-primary btn-sm">⬇ {t('dashboard.download')}</a>}
                           </div>
                         </>
                       ) : (

@@ -122,7 +122,7 @@ export default function SharePage({ params }: { params: Promise<{ id: string }> 
               🔗 {t('hero.stats') === 'songs created' ? 'Copy Link' : 'Copiar Link'}
             </button>
             {order.audioUrl && (
-              <a href={order.audioUrl} download className="btn btn-outline">
+              <a href={`/api/orders/${order.id}/download`} className="btn btn-outline">
                 📥 {t('order.downloadMp3')}
               </a>
             )}
