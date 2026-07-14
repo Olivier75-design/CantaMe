@@ -33,6 +33,26 @@ export interface GenerateInput extends SongBrief {
   songLanguage?: string;
   lyrics?: string; // pre-written / user-edited lyrics; skips generation when present
   title?: string;
+  preview?: boolean; // when true, compose only a short (~30-40s) teaser for speed
+}
+
+// Trim lyrics to roughly the first verse + first chorus so MiniMax composes a
+// short teaser that renders in ~30-40s instead of the full 2-3 min song.
+function toPreviewLyrics(full: string): string {
+  const kept: string[] = [];
+  let sections = 0;
+  for (const line of full.split('\n')) {
+    if (/^\s*\[[^\]]+\]/.test(line)) {
+      sections++;
+      if (sections > 2) break; // stop after the first two tagged sections
+    }
+    kept.push(line);
+    if (kept.length >= 14) break; // hard cap so the teaser stays short
+  }
+  const result = kept.join('\n').trim();
+  // Ensure there is enough sung text; otherwise fall back to the first lines.
+  if (result.replace(/\[[^\]]*\]/g, '').trim().length >= 20) return result;
+  return full.split('\n').filter((l) => l.trim()).slice(0, 8).join('\n') || full;
 }
 
 // Full pipeline: lyrics -> music -> uploaded to Supabase Storage. Returns the public URL + metadata.
@@ -56,7 +76,9 @@ export async function generateSongFile(
   }
 
   const prompt = buildStylePrompt(input.style, input.tone, input.voiceGender);
-  const audio = await generateMusic(prompt, lyrics);
+  // For the pre-purchase preview, compose only a short teaser so it renders fast.
+  const lyricsForMusic = input.preview ? toPreviewLyrics(lyrics) : lyrics;
+  const audio = await generateMusic(prompt, lyricsForMusic);
 
   // Upload to Supabase Storage
   const supabase = getSupabaseServer();

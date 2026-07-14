@@ -1918,6 +1918,18 @@ select.input-field option {
 .ico { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--text-muted); text-decoration: none; cursor: pointer; font-size: 0.9rem; transition: all var(--transition-fast); }
 .ico:hover { background: var(--bg-glass); color: var(--accent-primary); }
 
+/* Song row — background generation (in progress) state */
+.song-item.is-generating { border-color: rgba(37, 99, 235, 0.35); background: linear-gradient(90deg, rgba(37,99,235,0.05), transparent); }
+.spinner-sm { width: 18px; height: 18px; border-width: 2px; }
+.generating-badge { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.05em; padding: 2px 8px; border-radius: 999px; background: rgba(37, 99, 235, 0.14); color: var(--accent-primary); text-transform: uppercase; flex-shrink: 0; white-space: nowrap; }
+.gen-wave { display: flex; align-items: flex-end; gap: 3px; height: 30px; width: 110px; flex-shrink: 0; }
+.gen-wave span { flex: 1; background: var(--accent-primary); border-radius: 2px; min-height: 4px; animation: genwave 1s ease-in-out infinite; }
+.gen-wave span:nth-child(2) { animation-delay: 0.15s; }
+.gen-wave span:nth-child(3) { animation-delay: 0.3s; }
+.gen-wave span:nth-child(4) { animation-delay: 0.45s; }
+.gen-wave span:nth-child(5) { animation-delay: 0.6s; }
+@keyframes genwave { 0%, 100% { transform: scaleY(0.35); opacity: 0.6; } 50% { transform: scaleY(1); opacity: 1; } }
+
 /* Pagination */
 .dash-pagination { display: flex; align-items: center; justify-content: space-between; margin-top: var(--space-lg); gap: 8px; flex-wrap: wrap; }
 .pager { display: flex; gap: 4px; }

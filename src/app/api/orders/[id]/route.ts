@@ -35,6 +35,50 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
+    // Background full-length generation, run after purchase. The credit was
+    // already spent at checkout, so this does NOT charge again. Idempotent:
+    // returns immediately if the song is already READY. Composes from the
+    // exact (user-edited) lyrics stored on the order.
+    if (body.action === 'generate_full') {
+      const order = await db.getOrderById(id);
+      if (!order) {
+        return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+      }
+      if (order.status === 'READY' && (order.audio_url || order.audioUrl)) {
+        return NextResponse.json(order);
+      }
+
+      let anecdote1 = '';
+      let anecdote2 = '';
+      try {
+        const arr = Array.isArray(order.anecdotes)
+          ? order.anecdotes
+          : JSON.parse(String(order.anecdotes) || '[]');
+        anecdote1 = arr[0] || '';
+        anecdote2 = arr[1] || '';
+      } catch {
+        /* ignore */
+      }
+
+      const result = await generateSongFile({
+        recipientName: order.recipient_name || order.recipientName || '',
+        relation: order.relation,
+        occasion: order.occasion,
+        style: order.style,
+        tone: order.tone,
+        voiceGender: order.voice_gender || order.voiceGender || 'female',
+        message: order.message,
+        anecdote1,
+        anecdote2,
+        songLanguage: order.language,
+        // Compose the full song from the exact lyrics the user approved.
+        lyrics: order.lyrics || undefined,
+      });
+
+      const updated = await db.updateOrder(id, { audioUrl: result.audioUrl, status: 'READY' });
+      return NextResponse.json(updated);
+    }
+
     // Live revision: regenerate the song NOW from the saved order data + the notes.
     if (body.action === 'request_revision') {
       const order = await db.getOrderById(id);

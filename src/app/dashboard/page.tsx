@@ -87,6 +87,40 @@ export default function DashboardPage() {
   const isEn = lang === 'en';
   const locale = isEn ? 'en-US' : 'es-ES';
 
+  // Tracks orders whose background generation is already in flight (this tab).
+  const genRef = useRef<Set<string>>(new Set());
+
+  const refetchOrders = useCallback(async () => {
+    if (!user?.email) return;
+    const o = await fetch(`/api/orders?email=${encodeURIComponent(user.email)}`)
+      .then((r) => r.json())
+      .catch(() => []);
+    setOrders(Array.isArray(o) ? o : []);
+  }, [user]);
+
+  // Kick off (or resume) the background full-length generation for one order.
+  // The credit was already spent at checkout; this composes the complete song
+  // and flips the order to READY when done.
+  const triggerGenerate = useCallback(async (orderId: string) => {
+    if (genRef.current.has(orderId)) return;
+    genRef.current.add(orderId);
+    try {
+      const r = await fetch(`/api/orders/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'generate_full' }),
+      });
+      if (r.ok) {
+        const updated = await r.json();
+        if (updated?.id) setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
+      }
+    } catch {
+      /* left IN_PRODUCTION; resumes on the next dashboard load */
+    } finally {
+      genRef.current.delete(orderId);
+    }
+  }, []);
+
   // ── Auth guard + query + data ──
   useEffect(() => {
     if (!loading && !user) router.push('/signin?mode=signin');
@@ -137,7 +171,10 @@ export default function DashboardPage() {
       }
       setFinalizing(true);
       try {
+        // Don't carry the short preview clip onto the order — the full song is
+        // generated fresh in the background right after purchase.
         const brief = JSON.parse(stored);
+        delete brief.audioUrl;
         const res = await fetch('/api/orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -155,19 +192,32 @@ export default function DashboardPage() {
 
         sessionStorage.removeItem('ct-order');
         setJustPaid(true);
-        const [o, c] = await Promise.all([
-          fetch(`/api/orders?email=${encodeURIComponent(user.email || '')}`).then((r) => r.json()),
-          fetch(`/api/credits?userId=${user.id}`).then((r) => r.json()),
+        // Show the dashboard now: the order appears as "in progress" and the
+        // background-generation manager below composes the full song.
+        await Promise.all([
+          refetchOrders(),
+          fetch(`/api/credits?userId=${user.id}`)
+            .then((r) => r.json())
+            .then((c) => { if (typeof c.credits === 'number') setCredits(c.credits); }),
         ]);
-        setOrders(Array.isArray(o) ? o : []);
-        if (typeof c.credits === 'number') setCredits(c.credits);
       } catch {
         router.push('/checkout');
       } finally {
         setFinalizing(false);
       }
     })();
-  }, [user, credits, router]);
+  }, [user, credits, router, refetchOrders]);
+
+  // Drive any in-progress order to completion: start its background generation
+  // (or resume it after a reload) and poll until the full song is READY.
+  useEffect(() => {
+    if (!user) return;
+    const pending = orders.filter((o) => o.status === 'IN_PRODUCTION' && !(o.audioUrl || o.audio_url));
+    pending.forEach((o) => triggerGenerate(o.id));
+    if (pending.length === 0) return;
+    const poll = setInterval(refetchOrders, 15000);
+    return () => clearInterval(poll);
+  }, [orders, user, triggerGenerate, refetchOrders]);
 
   // ── Audio element wiring ──
   useEffect(() => {
@@ -315,30 +365,44 @@ export default function DashboardPage() {
   const SongRow = ({ o }: { o: Order }) => {
     const st = styleInfo(o);
     const audio = audioOf(o);
+    const generating = o.status === 'IN_PRODUCTION' && !audio;
     const active = nowPlaying?.id === o.id;
     const playingThis = active && isPlaying;
     return (
-      <div className={`song-item ${active ? 'active' : ''}`}>
+      <div className={`song-item ${active ? 'active' : ''} ${generating ? 'is-generating' : ''}`}>
         <button className="song-play" onClick={() => playSong(o)} disabled={!audio} aria-label="Play">
-          {playingThis ? '❚❚' : '▶'}
+          {generating ? <span className="spinner spinner-sm" /> : playingThis ? '❚❚' : '▶'}
         </button>
         <div className="song-info">
           <div className="song-title-row">
             <span className="song-title">{o.lyrics ? o.lyrics.split('\n')[0].replace(/\[.*?\]/g, '').trim().slice(0, 40) || nameOf(o) : `${t('dashboard.for')} ${nameOf(o)}`}</span>
+            {generating && <span className="generating-badge">🎶 {t('dashboard.generating')}</span>}
             {playingThis && <span className="playing-badge">{t('dashboard.playing')}</span>}
           </div>
-          <div className="song-meta">{t('dashboard.for')} {nameOf(o)} · {occLabel(o)} · {dateOf(o)}</div>
+          <div className="song-meta">
+            {generating ? t('dashboard.generatingHint') : `${t('dashboard.for')} ${nameOf(o)} · ${occLabel(o)} · ${dateOf(o)}`}
+          </div>
         </div>
         <span className="genre-chip" style={{ color: st?.color || 'var(--accent-primary)', borderColor: (st?.color || '#2563EB') + '55' }}>
           {styleLabel(o)}
         </span>
-        <div className={`waveform ${playingThis ? 'is-playing' : ''}`} aria-hidden>
-          {bars(o.id, 26).map((h, i) => <span key={i} style={{ height: `${h}%` }} />)}
-        </div>
+        {generating ? (
+          <div className="gen-wave" aria-hidden><span /><span /><span /><span /><span /></div>
+        ) : (
+          <div className={`waveform ${playingThis ? 'is-playing' : ''}`} aria-hidden>
+            {bars(o.id, 26).map((h, i) => <span key={i} style={{ height: `${h}%` }} />)}
+          </div>
+        )}
         <div className="song-actions">
-          <Link className="ico" href={`/order/${o.id}/share`} title={t('dashboard.share')}>🔗</Link>
-          {audio && <a className="ico" href={audio} download title={t('dashboard.download')}>⬇</a>}
-          <Link className="ico" href={`/order/${o.id}/review`} title={t('dashboard.revise')}>⋯</Link>
+          {generating ? (
+            <span className="ico" style={{ opacity: 0.5, cursor: 'default' }} title={t('dashboard.generating')}>⏳</span>
+          ) : (
+            <>
+              <Link className="ico" href={`/order/${o.id}/share`} title={t('dashboard.share')}>🔗</Link>
+              {audio && <a className="ico" href={audio} download title={t('dashboard.download')}>⬇</a>}
+              <Link className="ico" href={`/order/${o.id}/review`} title={t('dashboard.revise')}>⋯</Link>
+            </>
+          )}
         </div>
       </div>
     );

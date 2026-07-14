@@ -13,7 +13,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'recipientName et style sont requis.' }, { status: 400 });
     }
 
-    const result = await generateSongFile(body);
+    // The wizard preview only plays ~30s, so compose a short teaser for speed.
+    // The full-length song is generated later, in the background, after purchase.
+    const result = await generateSongFile({ ...body, preview: true });
     return NextResponse.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Generation failed';

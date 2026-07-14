@@ -5,9 +5,10 @@ import { CREDITS } from '@/lib/constants';
 
 export const runtime = 'nodejs';
 
-// Finalize an order by spending 1 credit. The song was already generated during
-// the preview step, so once a credit is spent it is immediately READY in the
-// user's dashboard. Returns 402 when the user has no credits left.
+// Finalize an order by spending the song's credits. The full-length song is
+// generated afterwards in the background (see the `generate_full` action in
+// /api/orders/[id]), so the order is marked IN_PRODUCTION here and flips to
+// READY once generation completes. Returns 402 when the user has no credits.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const order = await db.updateOrder(orderId, {
-      status: 'READY',
+      status: 'IN_PRODUCTION',
       stripeSessionId: `credit_${Date.now()}`,
     });
 

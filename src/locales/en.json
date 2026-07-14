@@ -267,6 +267,8 @@
     "subtitle": "Here's everything about your songs.",
     "statGenres": "Genres used",
     "creatingSong": "Creating your song...",
+    "generating": "In progress",
+    "generatingHint": "Composing the full song — this can take ~2 min. It will appear here, ready to play, when it's done.",
     "mySongs": "My songs",
     "playing": "Playing",
     "showing": "Showing {n} of {total} songs",
