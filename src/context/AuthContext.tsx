@@ -11,7 +11,7 @@ interface AuthContextType {
   loading: boolean;
   signUp: (email: string, password: string, name?: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signInWithGoogle: () => Promise<{ error: string | null }>;
+  signInWithGoogle: (redirectPath?: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -94,14 +94,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: error.message };
   }, []);
 
-  const signInWithGoogle = useCallback(async () => {
+  const signInWithGoogle = useCallback(async (redirectPath: string = '/dashboard') => {
     const supabase = getSupabaseBrowser();
+    const path = redirectPath.startsWith('/') ? redirectPath : '/dashboard';
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         // getSiteUrl() avoids the "null/dashboard" redirect that in-app
         // browsers produce; prefers NEXT_PUBLIC_SITE_URL when set.
-        redirectTo: `${getSiteUrl()}/dashboard`,
+        redirectTo: `${getSiteUrl()}${path}`,
       },
     });
     if (error) return { error: error.message };

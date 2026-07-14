@@ -40,16 +40,21 @@ export default function SignInPage() {
     }
   }, []);
 
-  // Once logged in, always go to the dashboard. If a song order is pending,
-  // the dashboard finalizes it automatically (creates the song + spends credits).
+  // Where to go after login: the ?next= path (e.g. /admin) if it's a safe
+  // internal path, otherwise the dashboard (which finalizes a pending order).
+  const destAfterLogin = () => {
+    const next = new URLSearchParams(window.location.search).get('next');
+    return next && next.startsWith('/') ? next : '/dashboard';
+  };
+
   useEffect(() => {
-    if (user) router.push('/dashboard');
+    if (user) router.push(destAfterLogin());
   }, [user, router]);
 
   const handleGoogleSignIn = async () => {
     setIsGoogleSubmitting(true);
     setError(null);
-    const result = await signInWithGoogle();
+    const result = await signInWithGoogle(destAfterLogin());
     if (result && result.error) {
       setError(result.error);
       setIsGoogleSubmitting(false);
@@ -76,8 +81,8 @@ export default function SignInPage() {
       return;
     }
 
-    // Dashboard finalizes any pending order automatically.
-    router.push('/dashboard');
+    // Go to ?next= (e.g. /admin) or the dashboard (which finalizes any order).
+    router.push(destAfterLogin());
   };
 
   const isEn = t('nav.login') === 'Log in';

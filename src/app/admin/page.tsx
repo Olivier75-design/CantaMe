@@ -78,10 +78,14 @@ export default function AdminPage() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(true);
 
-  // Non-admins are redirected away; admin API routes also verify server-side.
+  // Access control: send logged-out users to sign in (returning to /admin
+  // afterwards), and logged-in non-admins to their dashboard. Admin API routes
+  // also verify server-side.
   useEffect(() => {
-    if (!authLoading && !isAdmin) router.replace('/dashboard');
-  }, [authLoading, isAdmin, router]);
+    if (authLoading) return;
+    if (!user) { router.replace('/signin?mode=signin&next=/admin'); return; }
+    if (!isAdmin) router.replace('/dashboard');
+  }, [authLoading, user, isAdmin, router]);
 
   // Attach the Supabase access token so admin API routes can verify the caller.
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
