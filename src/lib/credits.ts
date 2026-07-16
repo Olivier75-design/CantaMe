@@ -45,3 +45,12 @@ export async function addCredits(userId: string, n: number): Promise<number> {
   await supabase.auth.admin.updateUserById(userId, { app_metadata: { credits: next } });
   return next;
 }
+
+// Set the balance to an exact value (admin grant/adjust only — never call this
+// from a user-facing flow). Clamps to >= 0. Returns the new balance.
+export async function setCredits(userId: string, n: number): Promise<number> {
+  const next = Math.max(0, Math.floor(Number(n) || 0));
+  const supabase = getSupabaseServer();
+  await supabase.auth.admin.updateUserById(userId, { app_metadata: { credits: next } });
+  return next;
+}

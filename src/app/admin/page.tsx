@@ -6,6 +6,8 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { getSupabaseBrowser } from '@/lib/supabase';
 import { isAdminEmail } from '@/lib/admin';
+import { STYLE_PROMPTS } from '@/lib/musicPrompts';
+import { CREDITS } from '@/lib/constants';
 import AudioPlayer from '@/components/AudioPlayer';
 
 interface Revision {
@@ -43,6 +45,24 @@ interface MusicStyle {
   audioUrl: string;
 }
 
+interface AdminUser {
+  id: string;
+  email: string;
+  credits: number;
+  songs: number;
+  createdAt: string;
+  lastSignInAt: string | null;
+}
+
+interface StudioResult {
+  audioUrl: string;
+  title: string;
+  lyrics: string;
+}
+
+const STUDIO_OCCASIONS = ['cumpleanos', 'boda', 'quinceanera', 'serenata', 'diaMadres', 'graduacion', 'declaracion', 'sanValentin', 'bautizo', 'otro'];
+const STUDIO_TONES = ['emotional', 'festive', 'romantic', 'funny'];
+
 interface Analytics {
   total: number;
   today: number;
@@ -72,7 +92,7 @@ export default function AdminPage() {
   const router = useRouter();
   const isAdmin = isAdminEmail(user?.email);
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'styles' | 'traffic'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'styles' | 'traffic' | 'studio' | 'users'>('orders');
 
   // Traffic (server-side, ad-blocker-proof analytics)
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -112,6 +132,29 @@ export default function AdminPage() {
     color: '#FF8906',
     audioUrl: '',
   });
+
+  // Studio (admin test generation) state
+  const [studioForm, setStudioForm] = useState({
+    recipientName: '',
+    relation: '',
+    occasion: 'cumpleanos',
+    style: 'bachata',
+    tone: 'emotional',
+    voiceGender: 'female',
+    songLanguage: 'es',
+    anecdote1: '',
+    message: '',
+    preview: true,
+  });
+  const [studioLoading, setStudioLoading] = useState(false);
+  const [studioError, setStudioError] = useState('');
+  const [studioResult, setStudioResult] = useState<StudioResult | null>(null);
+
+  // Users / credits state
+  const [userQuery, setUserQuery] = useState('');
+  const [userResults, setUserResults] = useState<AdminUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersSearched, setUsersSearched] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -238,6 +281,62 @@ export default function AdminPage() {
     }
   };
 
+  // ── Studio: run the real pipeline (no credits spent, no order created) ──
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studioForm.recipientName || !studioForm.style) return;
+    setStudioLoading(true);
+    setStudioError('');
+    setStudioResult(null);
+    try {
+      const res = await fetch('/api/admin/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify(studioForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Generation failed');
+      setStudioResult(data);
+    } catch (err) {
+      setStudioError(err instanceof Error ? err.message : 'Generation failed');
+    }
+    setStudioLoading(false);
+  };
+
+  // ── Users: search by email + adjust credits ──
+  const handleUserSearch = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setUsersLoading(true);
+    setUsersSearched(true);
+    try {
+      const res = await fetch(`/api/admin/users?email=${encodeURIComponent(userQuery.trim())}`, {
+        headers: await authHeaders(),
+      });
+      const data = await res.json();
+      setUserResults(Array.isArray(data?.users) ? data.users : []);
+    } catch {
+      setUserResults([]);
+    }
+    setUsersLoading(false);
+  };
+
+  const adjustCredits = async (userId: string, action: 'add' | 'set', amount: number) => {
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ userId, action, amount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Update failed');
+      setUserResults((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, credits: data.credits, songs: data.songs } : u)),
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Update failed');
+    }
+  };
+
   // Metrics
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -324,6 +423,18 @@ export default function AdminPage() {
                 onClick={() => setActiveTab('traffic')}
               >
                 📊 {t('hero.stats') === 'songs created' ? 'Traffic' : 'Tráfico'}
+              </button>
+              <button
+                className={activeTab === 'studio' ? 'active' : ''}
+                onClick={() => setActiveTab('studio')}
+              >
+                🎤 {isEn ? 'Studio' : 'Estudio'}
+              </button>
+              <button
+                className={activeTab === 'users' ? 'active' : ''}
+                onClick={() => setActiveTab('users')}
+              >
+                👤 {isEn ? 'Users' : 'Usuarios'}
               </button>
             </div>
           </div>
@@ -745,6 +856,190 @@ export default function AdminPage() {
                 </>
               ) : (
                 <div className="card text-center" style={{ padding: 'var(--space-2xl)' }}>{isEn ? 'Failed to load traffic.' : 'No se pudo cargar el tráfico.'}</div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: TEST STUDIO (admin-only generation, no credits/order) */}
+          {activeTab === 'studio' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 'var(--space-xl)', alignItems: 'start' }}>
+              {/* Form */}
+              <div className="card" style={{ background: 'var(--gradient-card)' }}>
+                <h3 className="heading-md mb-sm">🎤 {isEn ? 'Test Studio' : 'Estudio de Pruebas'}</h3>
+                <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)' }}>
+                  {isEn
+                    ? 'Generate a real song (OpenAI lyrics + MiniMax) to audition quality. No credits spent, no order created.'
+                    : 'Genera una canción real (letra OpenAI + MiniMax) para probar la calidad. No gasta créditos ni crea pedido.'}
+                </p>
+                <form onSubmit={handleGenerate} className="flex flex-col gap-md">
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+                    <div className="input-group">
+                      <label className="input-label">{isEn ? 'Recipient name' : 'Nombre del destinatario'}</label>
+                      <input className="input-field" value={studioForm.recipientName} onChange={(e) => setStudioForm((p) => ({ ...p, recipientName: e.target.value }))} placeholder="María" required />
+                    </div>
+                    <div className="input-group">
+                      <label className="input-label">{isEn ? 'Relationship' : 'Relación'}</label>
+                      <input className="input-field" value={studioForm.relation} onChange={(e) => setStudioForm((p) => ({ ...p, relation: e.target.value }))} placeholder={isEn ? 'her husband' : 'su esposo'} />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+                    <div className="input-group">
+                      <label className="input-label">{isEn ? 'Occasion' : 'Ocasión'}</label>
+                      <select className="input-field" value={studioForm.occasion} onChange={(e) => setStudioForm((p) => ({ ...p, occasion: e.target.value }))}>
+                        {STUDIO_OCCASIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      <label className="input-label">{isEn ? 'Genre / style' : 'Género / estilo'}</label>
+                      <select className="input-field" value={studioForm.style} onChange={(e) => setStudioForm((p) => ({ ...p, style: e.target.value }))}>
+                        {Object.keys(STYLE_PROMPTS).map((sName) => <option key={sName} value={sName}>{sName}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-md)' }}>
+                    <div className="input-group">
+                      <label className="input-label">{isEn ? 'Tone' : 'Tono'}</label>
+                      <select className="input-field" value={studioForm.tone} onChange={(e) => setStudioForm((p) => ({ ...p, tone: e.target.value }))}>
+                        {STUDIO_TONES.map((tn) => <option key={tn} value={tn}>{tn}</option>)}
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      <label className="input-label">{isEn ? 'Voice' : 'Voz'}</label>
+                      <select className="input-field" value={studioForm.voiceGender} onChange={(e) => setStudioForm((p) => ({ ...p, voiceGender: e.target.value }))}>
+                        <option value="female">{isEn ? 'Female' : 'Femenina'}</option>
+                        <option value="male">{isEn ? 'Male' : 'Masculina'}</option>
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      <label className="input-label">{isEn ? 'Language' : 'Idioma'}</label>
+                      <select className="input-field" value={studioForm.songLanguage} onChange={(e) => setStudioForm((p) => ({ ...p, songLanguage: e.target.value }))}>
+                        <option value="es">ES</option>
+                        <option value="en">EN</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    <label className="input-label">{isEn ? 'Anecdote / details' : 'Anécdota / detalles'}</label>
+                    <textarea className="input-field" rows={2} value={studioForm.anecdote1} onChange={(e) => setStudioForm((p) => ({ ...p, anecdote1: e.target.value }))} placeholder={isEn ? 'They met in the rain in Cartagena…' : 'Se conocieron bajo la lluvia en Cartagena…'} />
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">{isEn ? 'Personal message' : 'Mensaje personal'}</label>
+                    <textarea className="input-field" rows={2} value={studioForm.message} onChange={(e) => setStudioForm((p) => ({ ...p, message: e.target.value }))} />
+                  </div>
+
+                  <label className="flex items-center gap-sm" style={{ cursor: 'pointer' }}>
+                    <input type="checkbox" checked={studioForm.preview} onChange={(e) => setStudioForm((p) => ({ ...p, preview: e.target.checked }))} />
+                    <span className="body-sm">{isEn ? 'Quick preview (~30-40s, faster)' : 'Vista previa rápida (~30-40s, más rápido)'}</span>
+                  </label>
+
+                  <button type="submit" className="btn btn-primary" disabled={studioLoading}>
+                    {studioLoading ? (isEn ? 'Generating…' : 'Generando…') : (isEn ? '🎶 Generate' : '🎶 Generar')}
+                  </button>
+                </form>
+              </div>
+
+              {/* Result */}
+              <div className="card">
+                <h3 className="heading-sm mb-lg">{isEn ? 'Result' : 'Resultado'}</h3>
+                {studioLoading ? (
+                  <div className="text-center" style={{ padding: 'var(--space-xl)' }}>
+                    <div className="spinner-lg" style={{ margin: '0 auto var(--space-md)' }} />
+                    <p className="body-sm" style={{ color: 'var(--text-muted)' }}>
+                      {isEn ? 'Generating… full songs can take 1-2 minutes.' : 'Generando… una canción completa puede tardar 1-2 minutos.'}
+                    </p>
+                  </div>
+                ) : studioError ? (
+                  <div className="card card-flat" style={{ padding: 'var(--space-md)', color: 'var(--accent-secondary)' }}>
+                    ⚠️ {studioError}
+                  </div>
+                ) : studioResult ? (
+                  <div className="flex flex-col gap-md">
+                    <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{studioResult.title}</div>
+                    <AudioPlayer src={studioResult.audioUrl} showVisualizer />
+                    <a className="btn btn-ghost btn-sm" href={studioResult.audioUrl} download target="_blank" rel="noopener noreferrer">
+                      ⬇️ {isEn ? 'Download MP3' : 'Descargar MP3'}
+                    </a>
+                    <div>
+                      <div className="input-label mb-sm">{isEn ? 'Lyrics' : 'Letra'}</div>
+                      <div className="card card-flat" style={{ padding: 'var(--space-md)', whiteSpace: 'pre-wrap', maxHeight: 300, overflowY: 'auto', fontSize: '0.9rem' }}>
+                        {studioResult.lyrics}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="body-sm" style={{ color: 'var(--text-muted)' }}>
+                    {isEn ? 'Fill the form and generate to preview a song here.' : 'Completa el formulario y genera para escuchar una canción aquí.'}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: USERS & CREDITS */}
+          {activeTab === 'users' && (
+            <div className="animate-fade-in">
+              <div className="flex items-center justify-between mb-lg" style={{ flexWrap: 'wrap', gap: 'var(--space-md)' }}>
+                <h2 className="heading-md">👤 {isEn ? 'Users & Credits' : 'Usuarios y Créditos'}</h2>
+                <form onSubmit={handleUserSearch} className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+                  <input className="input-field" style={{ maxWidth: 300 }} placeholder={isEn ? 'Search by email…' : 'Buscar por email…'} value={userQuery} onChange={(e) => setUserQuery(e.target.value)} />
+                  <button type="submit" className="btn btn-primary" disabled={usersLoading}>
+                    {usersLoading ? (isEn ? 'Searching…' : 'Buscando…') : (isEn ? 'Search' : 'Buscar')}
+                  </button>
+                </form>
+              </div>
+
+              <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)' }}>
+                {isEn
+                  ? `Balances are in credits — 1 song = ${CREDITS.perSong} credits. Leave the search empty to list recent accounts.`
+                  : `Los saldos están en créditos — 1 canción = ${CREDITS.perSong} créditos. Deja la búsqueda vacía para listar cuentas recientes.`}
+              </p>
+
+              {usersLoading ? (
+                <div className="text-center"><div className="spinner-lg" style={{ margin: '2rem auto' }} /></div>
+              ) : userResults.length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
+                        {['Email', isEn ? 'Songs' : 'Canciones', isEn ? 'Credits' : 'Créditos', isEn ? 'Grant credits' : 'Otorgar créditos'].map((h) => (
+                          <th key={h} style={{ padding: 'var(--space-md)', textAlign: 'left', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {userResults.map((u) => (
+                        <tr key={u.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: 'var(--space-md)', fontSize: '0.85rem' }}>{u.email}</td>
+                          <td style={{ padding: 'var(--space-md)', fontWeight: 700 }}>{u.songs} 🎵</td>
+                          <td style={{ padding: 'var(--space-md)' }}>{u.credits}</td>
+                          <td style={{ padding: 'var(--space-md)' }}>
+                            <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+                              <button className="btn btn-sm btn-ghost" onClick={() => adjustCredits(u.id, 'add', CREDITS.perSong)}>+1 🎵</button>
+                              <button className="btn btn-sm btn-ghost" onClick={() => adjustCredits(u.id, 'add', 3 * CREDITS.perSong)}>+3</button>
+                              <button className="btn btn-sm btn-ghost" onClick={() => adjustCredits(u.id, 'add', 10 * CREDITS.perSong)}>+10</button>
+                              <button className="btn btn-sm btn-ghost" style={{ color: 'var(--accent-secondary)' }} onClick={() => adjustCredits(u.id, 'add', -CREDITS.perSong)}>−1</button>
+                              <button className="btn btn-sm btn-ghost" onClick={() => {
+                                const v = window.prompt(isEn ? 'Set exact credit balance:' : 'Establecer saldo exacto de créditos:', String(u.credits));
+                                if (v != null && v.trim() !== '' && Number.isFinite(Number(v))) adjustCredits(u.id, 'set', Number(v));
+                              }}>{isEn ? 'Set…' : 'Fijar…'}</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : usersSearched ? (
+                <div className="text-center" style={{ padding: 'var(--space-2xl)' }}>
+                  <p className="body-md">{isEn ? 'No users found.' : 'No se encontraron usuarios.'}</p>
+                </div>
+              ) : (
+                <div className="text-center" style={{ padding: 'var(--space-2xl)' }}>
+                  <p className="body-md" style={{ color: 'var(--text-muted)' }}>{isEn ? 'Search for a customer to manage their credits.' : 'Busca un cliente para gestionar sus créditos.'}</p>
+                </div>
               )}
             </div>
           )}
