@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { authHeaders } from '@/lib/authClient';
+import { validatePromo, discounted } from '@/lib/promoClient';
 import { CREDITS } from '@/lib/constants';
 
 interface OrderData {
@@ -29,9 +30,16 @@ export default function CheckoutPage() {
 
   const [orderData, setOrderData] = useState<OrderData | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
-  const [quantity, setQuantity] = useState(100);
+  const [quantity, setQuantity] = useState<number>(CREDITS.packs[0].credits);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Promo code (influencer discount) — display only; enforced server-side.
+  const [promoInput, setPromoInput] = useState('');
+  const [promoCode, setPromoCode] = useState('');
+  const [promoPct, setPromoPct] = useState(0);
+  const [promoMsg, setPromoMsg] = useState<string | null>(null);
+  const [checkingPromo, setCheckingPromo] = useState(false);
 
   const isEn = t('nav.login') === 'Log in';
 
@@ -122,6 +130,7 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           packId: pack.id,
           name: user?.user_metadata?.full_name || '',
+          promoCode: promoCode || undefined,
         }),
       });
       const data = await res.json();
@@ -130,6 +139,22 @@ export default function CheckoutPage() {
     } catch {
       setError(isEn ? 'Payment could not start. Please try again.' : 'No se pudo iniciar el pago. Inténtalo de nuevo.');
       setIsProcessing(false);
+    }
+  };
+
+  // Validate an entered promo code (for the discounted-price preview).
+  const handleApplyPromo = async () => {
+    setCheckingPromo(true);
+    const r = await validatePromo(promoInput);
+    setCheckingPromo(false);
+    if (r.valid) {
+      setPromoPct(r.percentOff);
+      setPromoCode(r.code || promoInput.trim().toUpperCase());
+      setPromoMsg(t('credits.promoApplied', { pct: String(r.percentOff) }));
+    } else {
+      setPromoPct(0);
+      setPromoCode('');
+      setPromoMsg(t('credits.promoInvalid'));
     }
   };
 
@@ -143,7 +168,7 @@ export default function CheckoutPage() {
 
   const hasCredits = credits >= CREDITS.perSong;
   const selectedPack = CREDITS.packs.find((p) => p.credits === quantity) || CREDITS.packs[0];
-  const total = selectedPack.price;
+  const total = discounted(selectedPack.price, promoPct);
 
   return (
     <div className="section">
@@ -169,7 +194,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="body-sm">{isEn ? 'Cost' : 'Costo'}</span>
-                  <span style={{ fontWeight: 600 }}>{CREDITS.perSong} {t('credits.credits')}</span>
+                  <span style={{ fontWeight: 600 }}>1 {t('credits.song')}</span>
                 </div>
                 <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 'var(--space-md)', marginTop: 'var(--space-sm)' }} className="flex justify-between items-center">
                   <span style={{ fontWeight: 700 }}>{t('credits.yourBalance')}</span>
@@ -199,7 +224,7 @@ export default function CheckoutPage() {
 
                 <div className="input-group">
                   <label className="input-label" style={{ marginBottom: '0.5rem' }}>
-                    {isEn ? 'Select a Credit Pack' : 'Selecciona un paquete de créditos'}
+                    {isEn ? 'How many songs?' : '¿Cuántas canciones?'}
                   </label>
                   <div style={{ display: 'flex', gap: '0.5rem', marginBottom: 'var(--space-md)' }}>
                     {CREDITS.packs.map((p) => (
@@ -208,27 +233,67 @@ export default function CheckoutPage() {
                         type="button"
                         className={`btn ${quantity === p.credits ? 'btn-primary' : 'btn-secondary'}`}
                         style={{
+                          position: 'relative',
                           flex: 1,
                           padding: '0.75rem var(--space-sm)',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          gap: '0.25rem',
+                          gap: '0.15rem',
                           borderRadius: 'var(--radius-md)',
                           cursor: 'pointer',
                         }}
                         onClick={() => setQuantity(p.credits)}
                       >
-                        <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>{p.credits} 🎵</span>
-                        <span style={{ fontSize: '0.85rem', opacity: 0.85 }}>${p.price}</span>
+                        <span style={{ fontSize: '1.35rem', fontWeight: 900, fontFamily: 'var(--font-display)' }}>{p.songs}</span>
+                        <span style={{ fontSize: '0.75rem', opacity: 0.85, textTransform: 'lowercase' }}>
+                          {p.songs === 1 ? t('credits.song') : t('credits.songs')}
+                        </span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700 }}>${p.price}</span>
+                        {'save' in p && p.save ? (
+                          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--accent-green)' }}>
+                            {isEn ? `save $${p.save}` : `ahorra $${p.save}`}
+                          </span>
+                        ) : null}
                       </button>
                     ))}
                   </div>
                 </div>
 
+                {/* Promo / influencer code */}
+                <div className="input-group">
+                  <label className="input-label" style={{ marginBottom: '0.5rem' }}>{t('credits.promoLabel')}</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input
+                      className="input-field"
+                      placeholder={t('credits.promoPlaceholder')}
+                      value={promoInput}
+                      onChange={(e) => { setPromoInput(e.target.value); setPromoMsg(null); }}
+                      style={{ flex: 1, textTransform: 'uppercase' }}
+                    />
+                    <button type="button" className="btn btn-secondary" onClick={handleApplyPromo} disabled={checkingPromo || !promoInput.trim()}>
+                      {checkingPromo ? '…' : t('credits.promoApply')}
+                    </button>
+                  </div>
+                  {promoMsg && (
+                    <span className="input-help" style={{ color: promoPct ? 'var(--accent-green)' : '#F25F4C' }}>
+                      {promoPct ? '✓ ' : '⚠️ '}{promoMsg}
+                    </span>
+                  )}
+                </div>
+
                 {error && <p className="body-sm mb-md" style={{ color: '#F25F4C' }}>⚠️ {error}</p>}
                 <button type="submit" className="btn btn-primary btn-lg w-full" disabled={isProcessing}>
-                  {isProcessing ? t('checkout.processing') : `${t('credits.payAndUnlock')} · $${total}`}
+                  {isProcessing
+                    ? t('checkout.processing')
+                    : (<>
+                        {t('credits.payAndUnlock')} · {promoPct ? (
+                          <>
+                            <span style={{ textDecoration: 'line-through', opacity: 0.6, marginRight: 6 }}>${selectedPack.price}</span>
+                            ${total.toFixed(2)}
+                          </>
+                        ) : `$${total.toFixed(2)}`}
+                      </>)}
                 </button>
                 <p className="body-sm text-center mt-md" style={{ opacity: 0.6 }}>🔒 {t('payment.redirectNote')}</p>
               </form>

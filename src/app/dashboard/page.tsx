@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { getSupabaseBrowser } from '@/lib/supabase';
 import { authHeaders } from '@/lib/authClient';
+import { validatePromo, discounted } from '@/lib/promoClient';
 import { MUSIC_STYLES, OCCASIONS, CREDITS } from '@/lib/constants';
 
 interface Order {
@@ -63,8 +64,14 @@ export default function DashboardPage() {
   // Credits
   const [credits, setCredits] = useState<number | null>(null);
   const [showBuy, setShowBuy] = useState(false);
-  const [buyQty, setBuyQty] = useState(100);
+  const [buyQty, setBuyQty] = useState<number>(CREDITS.packs[0].credits);
   const [buying, setBuying] = useState(false);
+  // Promo code in the "buy more songs" panel — display only; enforced server-side.
+  const [buyPromoInput, setBuyPromoInput] = useState('');
+  const [buyPromoCode, setBuyPromoCode] = useState('');
+  const [buyPromoPct, setBuyPromoPct] = useState(0);
+  const [buyPromoMsg, setBuyPromoMsg] = useState<string | null>(null);
+  const [checkingBuyPromo, setCheckingBuyPromo] = useState(false);
 
   // Auto-finalize a pending song order right after login (incl. Google OAuth).
   const [finalizing, setFinalizing] = useState(false);
@@ -287,6 +294,21 @@ export default function DashboardPage() {
   const readyCount = orders.filter((o) => audioOf(o)).length;
   const totalSpent = paid.reduce((s, o) => s + (o.price || 0), 0);
 
+  const applyBuyPromo = async () => {
+    setCheckingBuyPromo(true);
+    const r = await validatePromo(buyPromoInput);
+    setCheckingBuyPromo(false);
+    if (r.valid) {
+      setBuyPromoPct(r.percentOff);
+      setBuyPromoCode(r.code || buyPromoInput.trim().toUpperCase());
+      setBuyPromoMsg(t('credits.promoApplied', { pct: String(r.percentOff) }));
+    } else {
+      setBuyPromoPct(0);
+      setBuyPromoCode('');
+      setBuyPromoMsg(t('credits.promoInvalid'));
+    }
+  };
+
   const buyCredits = async () => {
     if (!user?.id) return;
     setBuying(true);
@@ -298,6 +320,7 @@ export default function DashboardPage() {
         body: JSON.stringify({
           packId: pack.id,
           name: user.user_metadata?.full_name || '',
+          promoCode: buyPromoCode || undefined,
         }),
       });
       const d = await r.json();
@@ -584,19 +607,44 @@ export default function DashboardPage() {
                                   display: 'flex',
                                   flexDirection: 'column',
                                   alignItems: 'center',
+                                  gap: '0.1rem',
                                   borderRadius: 'var(--radius-sm)',
                                   fontSize: '0.8rem',
                                   cursor: 'pointer',
                                 }}
                                 onClick={() => setBuyQty(p.credits)}
                               >
-                                <strong>{p.credits} 🎵</strong>
-                                <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>${p.price}</span>
+                                <strong style={{ fontSize: '1.05rem' }}>{p.songs}</strong>
+                                <span style={{ fontSize: '0.62rem', opacity: 0.85, textTransform: 'lowercase' }}>
+                                  {p.songs === 1 ? t('credits.song') : t('credits.songs')}
+                                </span>
+                                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>${p.price}</span>
                               </button>
                             ))}
                           </div>
+                          <div style={{ display: 'flex', gap: '0.4rem', marginBottom: 'var(--space-sm)' }}>
+                            <input
+                              className="input-field"
+                              placeholder={t('credits.promoPlaceholder')}
+                              value={buyPromoInput}
+                              onChange={(e) => { setBuyPromoInput(e.target.value); setBuyPromoMsg(null); }}
+                              style={{ flex: 1, textTransform: 'uppercase', fontSize: '0.85rem', padding: '0.5rem 0.6rem' }}
+                            />
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={applyBuyPromo} disabled={checkingBuyPromo || !buyPromoInput.trim()}>
+                              {checkingBuyPromo ? '…' : t('credits.promoApply')}
+                            </button>
+                          </div>
+                          {buyPromoMsg && (
+                            <p className="body-sm" style={{ marginBottom: 'var(--space-sm)', color: buyPromoPct ? 'var(--accent-green)' : '#F25F4C' }}>
+                              {buyPromoPct ? '✓ ' : '⚠️ '}{buyPromoMsg}
+                            </p>
+                          )}
                           <button className="btn btn-primary btn-sm w-full" onClick={buyCredits} disabled={buying}>
-                            {buying ? '…' : t('credits.confirmBuy')}
+                            {buying ? '…' : (() => {
+                              const bp = CREDITS.packs.find((p) => p.credits === buyQty) || CREDITS.packs[0];
+                              const final = discounted(bp.price, buyPromoPct);
+                              return `${t('credits.confirmBuy')} · $${final.toFixed(2)}`;
+                            })()}
                           </button>
                         </div>
                       ) : (

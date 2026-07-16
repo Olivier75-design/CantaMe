@@ -31,6 +31,12 @@ create table if not exists public.payments (
   created_at timestamptz default now()
 );
 
+-- Promo / influencer tracking (safe to run repeatedly). Lets you tally how much
+-- revenue each influencer code drove for commissions.
+alter table public.payments add column if not exists amount numeric;      -- charged price after discount
+alter table public.payments add column if not exists promo_code text;     -- e.g. CANTA40 (null = none)
+alter table public.payments add column if not exists influencer text;     -- tracking label for the code
+
 
 -- 1d) Traffic: server-side page-view counter (populated by middleware.ts).
 --     Ad-blocker-proof analytics — visible in the Admin → Traffic tab.

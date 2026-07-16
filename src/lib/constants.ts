@@ -55,15 +55,19 @@ export const OCCASION_STYLE_MAP: Record<string, string[]> = {
 };
 
 // ─── Credit-based pricing (replaces the old subscription tiers) ───
-// New users get 50 free credits. Each song = 20 credits, each revision = 10 credits.
+// Internally we bill in credits (1 song = 20, 1 revision = 10) so a revision can
+// cost half a song. Customers, however, see everything in *songs* — packs below
+// carry a `songs` count for display. New accounts get 20 credits = 1 free song
+// (the 30s preview is always free); influencer promo codes discount the price
+// (see lib/promo.ts), never the number of credits granted.
 export const CREDITS = {
-  freeOnSignup: 50, // credits granted to a brand-new account
+  freeOnSignup: 20, // 1 free song for a brand-new account
   perSong: 20, // credits consumed to unlock/create a song
   perRevision: 10, // credits consumed per revision
   packs: [
-    { id: 'pack_100', credits: 100, price: 5 },  // 100 credits for $5
-    { id: 'pack_300', credits: 300, price: 12 }, // 300 credits for $12 (save $3)
-    { id: 'pack_500', credits: 500, price: 18 }, // 500 credits for $18 (save $7)
+    { id: 'pack_1',  songs: 1,  credits: 20,  price: 4.99 },                    // 1 song
+    { id: 'pack_3',  songs: 3,  credits: 60,  price: 11.99, save: 3 },          // 3 songs (save ~$3)
+    { id: 'pack_10', songs: 10, credits: 200, price: 29.99, save: 20, best: true }, // 10 songs (save ~$20)
   ]
 } as const;
 
