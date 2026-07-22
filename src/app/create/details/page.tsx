@@ -64,7 +64,7 @@ function DetailsForm() {
 
     setIsGenerating(true);
 
-    // Store form data in sessionStorage for the preview page
+    // Store the brief; the preview page runs the REAL generation (lyrics + music).
     sessionStorage.setItem(
       'ct-order',
       JSON.stringify({
@@ -73,9 +73,6 @@ function DetailsForm() {
         style,
       })
     );
-
-    // Simulate generation delay
-    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     router.push('/create/preview');
   };
