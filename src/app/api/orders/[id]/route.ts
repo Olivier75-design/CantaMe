@@ -41,10 +41,11 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    // Background full-length generation, run after purchase. The credit was
-    // already spent at checkout, so this does NOT charge again. Idempotent:
-    // returns immediately if the song is already READY. Composes from the
-    // exact (user-edited) lyrics stored on the order.
+    // Finalize after purchase: mark the song READY. The credit was already spent
+    // at checkout, so this does NOT charge again. The full song was already
+    // composed at preview time, so we REUSE that exact track (no regeneration) —
+    // the delivered song must be identical to what the customer previewed.
+    // Idempotent: returns immediately if the song is already READY.
     if (body.action === 'generate_full') {
       const user = await getUserFromRequest(request);
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -59,6 +60,18 @@ export async function PUT(
       if (order.status === 'READY' && (order.audio_url || order.audioUrl)) {
         return NextResponse.json(order);
       }
+
+      // The preview already composed the FULL song (we generate once, then only
+      // clip the first 30s for the pre-purchase preview). Reuse that exact track
+      // so the delivered song is identical to what the customer heard —
+      // regenerating here would produce a different melody/voice (the bug fix).
+      const previewAudio = order.audio_url || order.audioUrl;
+      if (previewAudio) {
+        const updated = await db.updateOrder(id, { audioUrl: previewAudio, status: 'READY' });
+        return NextResponse.json(updated);
+      }
+
+      // Fallback: no preview audio on the order (legacy/edge) -> generate now.
       if (!(await rateLimit(`gen:${user.id}`, 20, 60))) {
         return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
       }

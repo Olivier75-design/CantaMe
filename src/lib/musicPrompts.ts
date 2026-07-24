@@ -102,8 +102,8 @@ export function buildLyricsMessages(brief: SongBrief, language: string, revision
       : '',
     '',
     isEn
-      ? 'Requirements: use the recipient name naturally. Write a FULL song of about 2 to 3 minutes: 2 to 3 verses and a catchy chorus repeated at least twice, plus a short bridge. Tag sections with [verse], [chorus] and [bridge]. Make it singable in the given genre.'
-      : 'Requisitos: usa el nombre de forma natural. Escribe una cancion COMPLETA de unos 2 a 3 minutos: 2 a 3 estrofas y un estribillo pegadizo repetido al menos dos veces, mas un puente corto. Marca las secciones con [verse], [chorus] y [bridge]. Que sea cantable en el genero indicado.',
+      ? 'Requirements: use the recipient name naturally. Write a concise but COMPLETE song of about 1 minute: one verse and a catchy chorus repeated twice (optionally one short extra verse). Keep it tight so it stays short. Tag sections with [verse] and [chorus]. Make it singable in the given genre.'
+      : 'Requisitos: usa el nombre de forma natural. Escribe una cancion COMPLETA pero concisa de aproximadamente 1 minuto: una estrofa y un estribillo pegadizo repetido dos veces (opcionalmente una estrofa extra corta). Mantenla breve. Marca las secciones con [verse] y [chorus]. Que sea cantable en el genero indicado.',
     isEn
       ? 'Respond with ONLY valid JSON, no markdown, no extra text: {"title": "...", "lyrics": "[verse]\\n...\\n[chorus]\\n..."}'
       : 'Responde SOLO con JSON valido, sin markdown ni texto extra: {"title": "...", "lyrics": "[verse]\\n...\\n[chorus]\\n..."}',
