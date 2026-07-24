@@ -87,6 +87,7 @@ export default function DashboardPage() {
 
   // Now-playing shared player
   const audioRef = useRef<HTMLAudioElement>(null);
+  const playIntentRef = useRef(false); // does the user currently want playback?
   const [nowPlaying, setNowPlaying] = useState<Order | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [curTime, setCurTime] = useState(0);
@@ -232,21 +233,46 @@ export default function DashboardPage() {
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    const onTime = () => setCurTime(a.currentTime);
-    const onMeta = () => setDur(a.duration || 0);
+
+    // Generated MP3s often report duration = Infinity until the browser scans to
+    // the end. When that happens, seek far past the end ONCE to force the real
+    // duration, then snap back to 0. `probing` guards the transient events the
+    // seek triggers (pause/ended), and we resume playback if the user wanted it.
+    let probing = false;
+
+    const onMeta = () => {
+      const d = a.duration;
+      if (Number.isFinite(d) && d > 0) { setDur(d); return; }
+      if (probing) return;
+      probing = true;
+      try { a.currentTime = 1e101; } catch { /* ignore */ }
+    };
+    const onTime = () => {
+      if (probing) {
+        if (Number.isFinite(a.duration)) setDur(a.duration);
+        probing = false;
+        a.currentTime = 0;
+        setCurTime(0);
+        if (playIntentRef.current) a.play().catch(() => {});
+        return;
+      }
+      setCurTime(a.currentTime);
+    };
     const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    const onPause = () => { if (!probing) setIsPlaying(false); };
+    const onEnded = () => { if (!probing) { setIsPlaying(false); playIntentRef.current = false; } };
+
     a.addEventListener('timeupdate', onTime);
     a.addEventListener('loadedmetadata', onMeta);
     a.addEventListener('play', onPlay);
     a.addEventListener('pause', onPause);
-    a.addEventListener('ended', onPause);
+    a.addEventListener('ended', onEnded);
     return () => {
       a.removeEventListener('timeupdate', onTime);
       a.removeEventListener('loadedmetadata', onMeta);
       a.removeEventListener('play', onPlay);
       a.removeEventListener('pause', onPause);
-      a.removeEventListener('ended', onPause);
+      a.removeEventListener('ended', onEnded);
     };
   }, []);
 
@@ -266,12 +292,14 @@ export default function DashboardPage() {
     const src = audioOf(o);
     if (!a || !src) return;
     if (nowPlaying?.id === o.id) {
-      if (a.paused) a.play().catch(() => {}); else a.pause();
+      if (a.paused) { playIntentRef.current = true; a.play().catch(() => {}); }
+      else { playIntentRef.current = false; a.pause(); }
       return;
     }
     setNowPlaying(o);
     a.src = src;
     a.currentTime = 0;
+    playIntentRef.current = true;
     a.play().catch(() => {});
   }, [nowPlaying]);
 
