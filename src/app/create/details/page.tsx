@@ -129,6 +129,27 @@ function DetailsForm() {
                 </select>
               </div>
 
+              {/* Song Language — must come BEFORE the fields with "Suggest"
+                  buttons: the suggestion templates are picked in this language,
+                  so choosing it afterwards would leave the suggested text in
+                  the wrong language. */}
+              <div className="input-group">
+                <label className="input-label">{t('form.songLanguage')}</label>
+                <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+                  {typeof languages === 'object' &&
+                    Object.entries(languages).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`btn btn-sm ${form.songLanguage === key ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => updateField('songLanguage', key)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                </div>
+              </div>
+
               {/* Anecdote 1 */}
               <div className="input-group">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
@@ -213,24 +234,6 @@ function DetailsForm() {
                         {key === 'romantic' && '💕'}
                         {key === 'funny' && '😄'}
                         {' '}{label}
-                      </button>
-                    ))}
-                </div>
-              </div>
-
-              {/* Song Language */}
-              <div className="input-group">
-                <label className="input-label">{t('form.songLanguage')}</label>
-                <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
-                  {typeof languages === 'object' &&
-                    Object.entries(languages).map(([key, label]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        className={`btn btn-sm ${form.songLanguage === key ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => updateField('songLanguage', key)}
-                      >
-                        {label}
                       </button>
                     ))}
                 </div>

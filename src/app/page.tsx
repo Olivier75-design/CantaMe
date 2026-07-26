@@ -6,8 +6,19 @@ import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { OCCASIONS, MUSIC_STYLES, OCCASION_STYLE_MAP, CREDITS, GALLERY_SAMPLES } from '@/lib/constants';
+import { authHeaders } from '@/lib/authClient';
 import AudioPlayer from '@/components/AudioPlayer';
 import { TEMPLATES } from '@/lib/templates';
+
+// Icon per voice line-up (keys match form.voices in the locale files).
+const VOICE_ICONS: Record<string, string> = {
+  female: '👩',
+  male: '👨',
+  duo: '👫',
+  femaleKids: '👩‍👧',
+  maleKids: '👨‍👦',
+  all: '👨‍👩‍👧',
+};
 
 interface OrderForm {
   recipientName: string;
@@ -193,10 +204,18 @@ export default function HomeDashboardPage() {
     try {
       const res = await fetch('/api/generate-song', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ ...briefBody(), lyrics, title: lyricsTitle }),
       });
       const data = await res.json();
+
+      // Signed in but out of credits -> buy a pack. (Guests are never blocked
+      // here: they can generate and listen, and sign in only to download.)
+      if (res.status === 402) {
+        sessionStorage.setItem('ct-order', JSON.stringify({ ...briefBody(), lyrics, title: lyricsTitle }));
+        router.push('/checkout');
+        return;
+      }
       if (!res.ok) throw new Error(data?.error || 'Error');
       setGeneratedAudioUrl(data.audioUrl);
     } catch (err) {
@@ -249,6 +268,36 @@ export default function HomeDashboardPage() {
     // Logged-in users skip sign-in and go straight to the dashboard, which
     // finalizes the song automatically. Guests sign in first (incl. Google).
     router.push(user ? '/dashboard' : '/signin');
+  };
+
+  // Playback is free for everyone, but downloading requires an account. Guests
+  // are sent through sign-in (which also saves the song to their new library).
+  // Signed-in users need the request to carry their token, so a plain <a href>
+  // won't do — fetch the file and hand the browser a blob instead.
+  const handleDownload = async () => {
+    if (!generatedAudioUrl) return;
+    if (!user) {
+      handleGetSong();
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/songs/download?url=${encodeURIComponent(generatedAudioUrl)}&name=${encodeURIComponent(recipientName)}`,
+        { headers: await authHeaders() },
+      );
+      if (!res.ok) throw new Error('download');
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `CantaMe - ${recipientName}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+    } catch {
+      setGenerateError(isEn ? 'Download failed. Please try again.' : 'La descarga falló. Inténtalo de nuevo.');
+    }
   };
 
   const relations = t('form.relations') as Record<string, string>;
@@ -355,9 +404,9 @@ export default function HomeDashboardPage() {
             {t('hero.stats') === 'songs created' ? 'CantaMe Studio' : 'CantaMe Studio'}
           </h1>
           <p className="body-sm" style={{ opacity: 0.7 }}>
-            {t('hero.stats') === 'songs created' 
-              ? 'Configure and preview your custom Latin song instantly.' 
-              : 'Configura y previsualiza tu canción latina personalizada al instante.'}
+            {t('hero.stats') === 'songs created'
+              ? 'Configure and create your custom Latin song in minutes.'
+              : 'Configura y crea tu canción latina personalizada en minutos.'}
           </p>
         </div>
 
@@ -497,6 +546,26 @@ export default function HomeDashboardPage() {
                   </select>
                 </div>
 
+                {/* Language — must come BEFORE the fields with "Suggest"
+                    buttons: the suggestion templates are picked in this
+                    language, so choosing it afterwards would leave the
+                    suggested text in the wrong language. */}
+                <div className="input-group">
+                  <label className="input-label">{t('form.songLanguage')}</label>
+                  <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+                    {languages && Object.entries(languages).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`btn btn-sm ${form.songLanguage === key ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => updateField('songLanguage', key)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Anecdote 1 */}
                 <div className="input-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
@@ -566,24 +635,7 @@ export default function HomeDashboardPage() {
                   </div>
                 </div>
 
-                {/* Language */}
-                <div className="input-group">
-                  <label className="input-label">{t('form.songLanguage')}</label>
-                  <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
-                    {languages && Object.entries(languages).map(([key, label]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        className={`btn btn-sm ${form.songLanguage === key ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => updateField('songLanguage', key)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Voice gender */}
+                {/* Voice line-up */}
                 <div className="input-group">
                   <label className="input-label">{t('form.voiceGender')}</label>
                   <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
@@ -594,15 +646,16 @@ export default function HomeDashboardPage() {
                         className={`btn btn-sm ${form.voiceGender === key ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => updateField('voiceGender', key)}
                       >
-                        {key === 'male' ? '👨' : '👩'} {label}
+                        {VOICE_ICONS[key] || '🎤'} {label}
                       </button>
                     ))}
                   </div>
+                  <span className="input-help">{t('form.voiceHint')}</span>
                 </div>
 
                 {/* Submit button */}
                 <button type="submit" className="btn btn-primary btn-lg w-full mt-md">
-                  {t('form.generatePreview')} ✨
+                  {t('form.generatePreview')}
                 </button>
               </div>
             </form>
@@ -720,48 +773,68 @@ export default function HomeDashboardPage() {
                 </div>
               </div>
             ) : (
-              /* Preview Player & Purchase Cards */
+              /* The finished song — playable and downloadable right away */
               <div>
                 <div
                   className="card text-center mb-xl"
                   style={{ maxWidth: 540, margin: '0 auto var(--space-xl)', background: 'var(--gradient-card)' }}
                 >
                   <div className="animate-float" style={{ fontSize: '3rem', marginBottom: 'var(--space-sm)' }}>🎵</div>
-                  <h3 className="heading-md mb-md">
-                    {t('hero.stats') === 'songs created' ? 'Your preview for' : 'Tu vista previa para'} {recipientName}
-                  </h3>
-                  
+                  <h3 className="heading-md mb-md">{t('preview.title')}</h3>
+                  <p className="body-sm mb-lg">{t('preview.subtitle', { name: recipientName })}</p>
+
                   <AudioPlayer
                     src={generatedAudioUrl || undefined}
                     variant="large"
-                    title={`${(t('hero.stats') === 'songs created' ? musicStyles.find((s) => s.id === selectedStyle)?.nameEn : musicStyles.find((s) => s.id === selectedStyle)?.nameEs) || selectedStyle} · ${recipientName}`}
+                    title={`${(isEn ? musicStyles.find((s) => s.id === selectedStyle)?.nameEn : musicStyles.find((s) => s.id === selectedStyle)?.nameEs) || selectedStyle} · ${recipientName}`}
                     showVisualizer
-                    maxDuration={30}
                   />
+
+                  {generatedAudioUrl && (
+                    <>
+                      <button className="btn btn-outline mt-lg" onClick={handleDownload}>
+                        {user ? `⬇ ${t('preview.download')}` : `🔒 ${t('preview.downloadSignIn')}`}
+                      </button>
+                      {!user && (
+                        <p className="body-sm mt-sm" style={{ color: 'var(--text-muted)' }}>
+                          {t('preview.downloadHint')}
+                        </p>
+                      )}
+                    </>
+                  )}
 
                   <p className="body-sm mt-lg" style={{ color: 'var(--accent-primary)', fontStyle: 'italic' }}>
                     {t('preview.cta', { name: recipientName })}
                   </p>
                 </div>
 
-                {/* Credit-based unlock */}
+                {/* Guests are invited to sign in (2nd song free); members just save it. */}
                 <div className="credit-cta card">
-                  <div className="credit-cta-badge">🎵 {t('credits.oneSong')}</div>
-                  <h2 className="heading-md mb-sm">{t('credits.unlockTitle')}</h2>
-                  <p className="body-md mb-lg">{t('credits.unlockSubtitle')}</p>
-
-                  <ul className="credit-cta-features">
-                    <li>✓ {t('credits.featFull')}</li>
-                    <li>✓ {t('credits.featDownload')}</li>
-                    <li>✓ {t('credits.featShare')}</li>
-                  </ul>
-
-                  <button className="btn btn-primary btn-lg w-full" onClick={handleGetSong}>
-                    ✨ {t('credits.getMySong')}
-                  </button>
-                  <p className="body-sm mt-md" style={{ color: 'var(--text-muted)' }}>
-                    {t('credits.firstFree')}
-                  </p>
+                  {user ? (
+                    <>
+                      <h2 className="heading-md mb-sm">{t('preview.saveCta')}</h2>
+                      <ul className="credit-cta-features">
+                        <li>✓ {t('credits.featFull')}</li>
+                        <li>✓ {t('credits.featDownload')}</li>
+                        <li>✓ {t('credits.featShare')}</li>
+                      </ul>
+                      <button className="btn btn-primary btn-lg w-full" onClick={handleGetSong}>
+                        ✨ {t('preview.saveCta')}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="credit-cta-badge">🎁 {t('preview.freeBadge')}</div>
+                      <h2 className="heading-md mb-sm">{t('preview.guestTitle')}</h2>
+                      <p className="body-md mb-lg">{t('preview.guestBody')}</p>
+                      <button className="btn btn-primary btn-lg w-full" onClick={handleGetSong}>
+                        ✨ {t('preview.guestCta')}
+                      </button>
+                      <p className="body-sm mt-md" style={{ color: 'var(--text-muted)' }}>
+                        {t('credits.firstFree')}
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 <div className="text-center mt-xl">

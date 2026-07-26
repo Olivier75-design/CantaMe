@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
+import { authHeaders } from '@/lib/authClient';
 import AudioPlayer from '@/components/AudioPlayer';
 
 interface OrderData {
@@ -50,10 +51,17 @@ export default function PreviewPage() {
     try {
       const res = await fetch('/api/generate-song', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify(brief),
       });
       const data = await res.json();
+
+      // Signed in but out of credits -> buy a pack. (Guests are never blocked
+      // here: they can generate and listen, and sign in only to download.)
+      if (res.status === 402) {
+        router.push('/checkout');
+        return;
+      }
       if (!res.ok) throw new Error(data?.error || 'Error');
       setAudioUrl(data.audioUrl);
       setLyrics(data.lyrics || '');
@@ -89,18 +97,47 @@ export default function PreviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating]);
 
-  // Save the brief + generated preview, then continue to the credit step.
+  // Save the brief + the generated song, then continue.
   const handleGetSong = () => {
     if (!orderData) return;
     sessionStorage.setItem(
       'ct-order',
       JSON.stringify({ ...orderData, tier: 'credit', price: 2, audioUrl, lyrics })
     );
-    // Logged-in users go to the dashboard (finalizes with a credit); guests sign in first.
+    // Logged-in users go to the dashboard (saves it); guests sign in first.
     router.push(user ? '/dashboard' : '/signin');
   };
 
   const recipientName = orderData?.recipientName || 'Someone Special';
+
+  // Playback is free for everyone, but downloading requires an account. Guests
+  // go through sign-in (which also saves the song to their new library).
+  // Signed-in users need the token on the request, so a plain <a href> won't do.
+  const handleDownload = async () => {
+    if (!audioUrl) return;
+    if (!user) {
+      handleGetSong();
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/songs/download?url=${encodeURIComponent(audioUrl)}&name=${encodeURIComponent(recipientName)}`,
+        { headers: await authHeaders() },
+      );
+      if (!res.ok) throw new Error('download');
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `CantaMe - ${recipientName}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+    } catch {
+      setError(isEn ? 'Download failed. Please try again.' : 'La descarga falló. Inténtalo de nuevo.');
+    }
+  };
 
   // ── Generating ─────────────────────────────────────────────
   if (isGenerating) {
@@ -196,8 +233,19 @@ export default function PreviewPage() {
               variant="large"
               title={`${orderData?.style || 'Bachata'} · ${recipientName}`}
               showVisualizer
-              maxDuration={30}
             />
+            {audioUrl && (
+              <>
+                <button className="btn btn-outline mt-lg" onClick={handleDownload}>
+                  {user ? `⬇ ${t('preview.download')}` : `🔒 ${t('preview.downloadSignIn')}`}
+                </button>
+                {!user && (
+                  <p className="body-sm mt-sm" style={{ color: 'var(--text-muted)' }}>
+                    {t('preview.downloadHint')}
+                  </p>
+                )}
+              </>
+            )}
             <p className="body-md mt-lg" style={{ fontStyle: 'italic', color: 'var(--accent-primary)' }}>
               {t('preview.cta', { name: recipientName })}
             </p>
@@ -228,24 +276,33 @@ export default function PreviewPage() {
             </div>
           )}
 
-          {/* Credit-based unlock (replaces the old $10/$20/$35 plan cards) */}
+          {/* Guests are invited to sign in (2nd song free); members just save it. */}
           <div className="credit-cta card" style={{ maxWidth: 600, margin: '0 auto' }}>
-            <div className="credit-cta-badge">🎵 {t('credits.oneSong')}</div>
-            <h2 className="heading-md mb-sm">{t('credits.unlockTitle')}</h2>
-            <p className="body-md mb-lg">{t('credits.unlockSubtitle')}</p>
-
-            <ul className="credit-cta-features">
-              <li>✓ {t('credits.featFull')}</li>
-              <li>✓ {t('credits.featDownload')}</li>
-              <li>✓ {t('credits.featShare')}</li>
-            </ul>
-
-            <button className="btn btn-primary btn-lg w-full" onClick={handleGetSong}>
-              ✨ {t('credits.getMySong')}
-            </button>
-            <p className="body-sm mt-md" style={{ color: 'var(--text-muted)' }}>
-              {t('credits.firstFree')}
-            </p>
+            {user ? (
+              <>
+                <h2 className="heading-md mb-sm">{t('preview.saveCta')}</h2>
+                <ul className="credit-cta-features">
+                  <li>✓ {t('credits.featFull')}</li>
+                  <li>✓ {t('credits.featDownload')}</li>
+                  <li>✓ {t('credits.featShare')}</li>
+                </ul>
+                <button className="btn btn-primary btn-lg w-full" onClick={handleGetSong}>
+                  ✨ {t('preview.saveCta')}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="credit-cta-badge">🎁 {t('preview.freeBadge')}</div>
+                <h2 className="heading-md mb-sm">{t('preview.guestTitle')}</h2>
+                <p className="body-md mb-lg">{t('preview.guestBody')}</p>
+                <button className="btn btn-primary btn-lg w-full" onClick={handleGetSong}>
+                  ✨ {t('preview.guestCta')}
+                </button>
+                <p className="body-sm mt-md" style={{ color: 'var(--text-muted)' }}>
+                  {t('credits.firstFree')}
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
