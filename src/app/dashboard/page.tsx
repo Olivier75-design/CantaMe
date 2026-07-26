@@ -76,6 +76,8 @@ export default function DashboardPage() {
   // Auto-finalize a pending song order right after login (incl. Google OAuth).
   const [finalizing, setFinalizing] = useState(false);
   const finalizedRef = useRef(false);
+  // True only when we arrived here straight from a successful credit purchase.
+  const cameFromPaymentRef = useRef(false);
 
   // Library controls
   const [filter, setFilter] = useState<string>('all');
@@ -140,6 +142,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (new URLSearchParams(window.location.search).get('paid') === '1') {
+      cameFromPaymentRef.current = true;
       setJustPaid(true);
       window.history.replaceState({}, '', '/dashboard');
     }
@@ -175,12 +178,18 @@ export default function DashboardPage() {
     (async () => {
       const brief = JSON.parse(stored);
 
-      // The song is composed (and paid for, in credits or as the free guest
-      // song) BEFORE we get here. If there is no audio yet, the visitor was
-      // bounced to sign-in before generating — send them back to compose it,
-      // where the credit is charged properly. Never mint an empty order here.
+      // The song is composed BEFORE we get here, so a brief with no audio is
+      // either (a) someone resuming right after buying credits for it, or
+      // (b) leftover junk from an abandoned session. Only (a) may resume
+      // composing — otherwise a returning user who just wanted to log in gets
+      // yanked into the wizard AND charged for a song they never asked for.
       if (!brief.audioUrl) {
-        router.push('/create/preview');
+        if (cameFromPaymentRef.current) {
+          router.push('/create/preview');
+        } else {
+          sessionStorage.removeItem('ct-order');
+          setFinalizing(false);
+        }
         return;
       }
 
