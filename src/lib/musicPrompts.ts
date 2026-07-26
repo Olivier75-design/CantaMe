@@ -17,18 +17,22 @@ export const STYLE_PROMPTS: Record<string, string> = {
 };
 
 // Who sings. The LEAD is always an adult voice (female, male, or both taking
-// turns); a kids' choir is only ever BACKING on the chorus — never a lead and
-// never alone, which is what keeps it a tasteful accent instead of a novelty.
+// turns). A kids' choir accompanies, but it has to be LOUD and clearly audible
+// on every chorus — asking for a "background" choir makes the model bury it to
+// the point you can't hear it at all. So: verses = lead alone, chorus = choir
+// pushed to the front of the mix, doubling the melody in unison.
+// Kept deliberately short: the music model dilutes long prompts, and a buried
+// choir instruction is exactly why the kids came out inaudible.
+const KIDS_CHOIR =
+  'CORO DE NINOS fuerte y destacado en cada estribillo; estrofas solo voz principal';
+
 const VOICE_HINT: Record<string, string> = {
   female: 'voz principal femenina',
   male: 'voz principal masculina',
   duo: 'duo de voz principal femenina y masculina alternando estrofas, con armonias a dos voces',
-  femaleKids:
-    'voz principal femenina, acompanada por un coro de ninos que solo canta de fondo en el estribillo; los ninos nunca llevan la voz principal ni cantan solos',
-  maleKids:
-    'voz principal masculina, acompanada por un coro de ninos que solo canta de fondo en el estribillo; los ninos nunca llevan la voz principal ni cantan solos',
-  all:
-    'duo de voz principal femenina y masculina, acompanados por un coro de ninos que solo canta de fondo en el estribillo; los ninos nunca llevan la voz principal ni cantan solos',
+  femaleKids: `voz principal femenina, ${KIDS_CHOIR}`,
+  maleKids: `voz principal masculina, ${KIDS_CHOIR}`,
+  all: `duo de voz femenina y masculina alternando estrofas, ${KIDS_CHOIR}`,
 };
 
 const TONE_HINT: Record<string, string> = {
@@ -66,18 +70,24 @@ const OCCASION_LABEL_EN: Record<string, string> = {
 
 // Tells the LYRICS writer about the vocal line-up, so a duet gets verses that
 // can alternate and a kids' choir gets a simple, singalong chorus to back.
+const KIDS_LYRIC_EN =
+  "A children's choir sings the CHORUS out loud with the lead. Write that chorus so a group of kids can belt it: very short lines (4-6 words), plain everyday words, strong repetition, and the name chanted in it. No complex phrasing in the chorus.";
+
+const KIDS_LYRIC_ES =
+  'Un coro de ninos canta el ESTRIBILLO a viva voz junto a la voz principal. Escribe ese estribillo para que un grupo de ninos pueda cantarlo a pleno pulmon: versos muy cortos (4-6 palabras), palabras sencillas y cotidianas, mucha repeticion, y el nombre coreado. Nada complicado en el estribillo.';
+
 const VOICE_LYRIC_HINT_EN: Record<string, string> = {
   duo: 'Two adult singers (female and male) trade the verses — write verses that can alternate between two voices.',
-  femaleKids: "A children's choir backs the CHORUS only — keep the chorus simple and easy to sing along to.",
-  maleKids: "A children's choir backs the CHORUS only — keep the chorus simple and easy to sing along to.",
-  all: "Female and male leads trade the verses and a children's choir backs the CHORUS — keep the chorus simple and easy to sing along to.",
+  femaleKids: KIDS_LYRIC_EN,
+  maleKids: KIDS_LYRIC_EN,
+  all: `Female and male leads trade the verses. ${KIDS_LYRIC_EN}`,
 };
 
 const VOICE_LYRIC_HINT_ES: Record<string, string> = {
   duo: 'Dos voces adultas (femenina y masculina) se alternan las estrofas — escribe estrofas que puedan alternarse entre dos voces.',
-  femaleKids: 'Un coro de ninos acompana SOLO el estribillo — que el estribillo sea sencillo y facil de cantar en grupo.',
-  maleKids: 'Un coro de ninos acompana SOLO el estribillo — que el estribillo sea sencillo y facil de cantar en grupo.',
-  all: 'Voz femenina y masculina se alternan las estrofas y un coro de ninos acompana SOLO el estribillo — que el estribillo sea sencillo y facil de cantar en grupo.',
+  femaleKids: KIDS_LYRIC_ES,
+  maleKids: KIDS_LYRIC_ES,
+  all: `Voz femenina y masculina se alternan las estrofas. ${KIDS_LYRIC_ES}`,
 };
 
 export interface SongBrief {
@@ -96,10 +106,10 @@ export interface SongBrief {
 // push MiniMax from "demo" to "radio-ready": explicit studio mixing/mastering
 // cues, a lead vocal placed up front, and subtle autotune (which also masks the
 // model's vocal artifacts). Kept short — the music model ignores long prompts.
+// Short on purpose — see KIDS_CHOIR. Everything here competes for the model's
+// attention with the style and voice instructions, which matter more.
 const PRODUCTION_HINT =
-  'produccion de estudio radio-ready, masterizado, mezcla ancha y limpia, ' +
-  'voz principal clara al frente con armonias y coros, autotune sutil, ' +
-  'bateria potente, bajo definido, calidad comercial de alta fidelidad';
+  'produccion radio-ready, mezcla ancha, masterizado, autotune sutil';
 
 // Build the MiniMax music model prompt (style + voice gender + tone + production).
 export function buildStylePrompt(styleId?: string, tone?: string, voiceGender?: string): string {

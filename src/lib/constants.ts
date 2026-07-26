@@ -1,5 +1,16 @@
 // Occasion and Style data constants used across the app
 
+// Icon per voice line-up. Keys must match `form.voices` in the locale files and
+// VOICE_HINT in lib/musicPrompts.ts.
+export const VOICE_ICONS: Record<string, string> = {
+  female: '👩',
+  male: '👨',
+  duo: '👫',
+  femaleKids: '👩‍👧',
+  maleKids: '👨‍👦',
+  all: '👨‍👩‍👧',
+};
+
 export interface Occasion {
   id: string;
   icon: string;

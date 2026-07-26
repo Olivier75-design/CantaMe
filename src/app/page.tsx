@@ -5,20 +5,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
-import { OCCASIONS, MUSIC_STYLES, OCCASION_STYLE_MAP, CREDITS, GALLERY_SAMPLES } from '@/lib/constants';
+import { OCCASIONS, MUSIC_STYLES, OCCASION_STYLE_MAP, CREDITS, GALLERY_SAMPLES, VOICE_ICONS } from '@/lib/constants';
 import { authHeaders } from '@/lib/authClient';
 import AudioPlayer from '@/components/AudioPlayer';
 import { TEMPLATES } from '@/lib/templates';
-
-// Icon per voice line-up (keys match form.voices in the locale files).
-const VOICE_ICONS: Record<string, string> = {
-  female: '👩',
-  male: '👨',
-  duo: '👫',
-  femaleKids: '👩‍👧',
-  maleKids: '👨‍👦',
-  all: '👨‍👩‍👧',
-};
 
 interface OrderForm {
   recipientName: string;

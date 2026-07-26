@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { TEMPLATES } from '@/lib/templates';
+import { VOICE_ICONS } from '@/lib/constants';
 
 function DetailsForm() {
   const { t } = useLanguage();
@@ -22,6 +23,7 @@ function DetailsForm() {
     message: '',
     tone: 'emotional',
     songLanguage: 'es',
+    voiceGender: 'female',
   });
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -57,6 +59,7 @@ function DetailsForm() {
   const relations = t('form.relations') as Record<string, string>;
   const tones = t('form.tones') as Record<string, string>;
   const languages = t('form.languages') as Record<string, string>;
+  const voices = t('form.voices') as Record<string, string>;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,6 +240,25 @@ function DetailsForm() {
                       </button>
                     ))}
                 </div>
+              </div>
+
+              {/* Voice line-up */}
+              <div className="input-group">
+                <label className="input-label">{t('form.voiceGender')}</label>
+                <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+                  {typeof voices === 'object' &&
+                    Object.entries(voices).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`btn btn-sm ${form.voiceGender === key ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => updateField('voiceGender', key)}
+                      >
+                        {VOICE_ICONS[key] || '🎤'} {label}
+                      </button>
+                    ))}
+                </div>
+                <span className="input-help">{t('form.voiceHint')}</span>
               </div>
 
               {/* Submit */}
