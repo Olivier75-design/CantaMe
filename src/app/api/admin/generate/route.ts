@@ -9,8 +9,7 @@ export const maxDuration = 300;
 
 // POST /api/admin/generate — ADMIN-ONLY test generation.
 // Runs the exact production pipeline so an admin can audition sound quality, but
-// it does NOT spend credits and does NOT create an order. `preview:true` composes
-// a fast ~30-40s teaser; otherwise it renders the full song.
+// it does NOT spend credits and does NOT create an order.
 export async function POST(request: NextRequest) {
   if (!(await verifyAdminRequest(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

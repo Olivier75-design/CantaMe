@@ -173,45 +173,44 @@ export default function DashboardPage() {
     finalizedRef.current = true;
 
     (async () => {
-      // Not enough credits -> go buy them (no duplicate order gets created).
-      if (credits < CREDITS.perSong) {
-        router.push('/checkout');
+      const brief = JSON.parse(stored);
+
+      // The song is composed (and paid for, in credits or as the free guest
+      // song) BEFORE we get here. If there is no audio yet, the visitor was
+      // bounced to sign-in before generating — send them back to compose it,
+      // where the credit is charged properly. Never mint an empty order here.
+      if (!brief.audioUrl) {
+        router.push('/create/preview');
         return;
       }
+
       setFinalizing(true);
       try {
-        // Don't carry the short preview clip onto the order — the full song is
-        // generated fresh in the background right after purchase.
-        const brief = JSON.parse(stored);
-        delete brief.audioUrl;
+        // Save the EXACT song that was generated. No /api/checkout call: the
+        // credit was already spent at generation time (or it was the free
+        // no-signup song), so charging again here would double-bill.
         const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) };
         const res = await fetch('/api/orders', {
           method: 'POST',
           headers,
-          body: JSON.stringify({ ...brief, tier: 'credit', price: 0 }),
+          body: JSON.stringify({ ...brief, tier: 'credit', price: 0, status: 'READY' }),
         });
         const order = await res.json();
         if (!order?.id) throw new Error('order');
 
-        const fin = await fetch('/api/checkout', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ orderId: order.id }),
-        });
-        if (fin.status === 402) { router.push('/checkout'); return; }
-
         sessionStorage.removeItem('ct-order');
         setJustPaid(true);
-        // Show the dashboard now: the order appears as "in progress" and the
-        // background-generation manager below composes the full song.
+        // The song is already attached, so it shows up ready to play.
         await Promise.all([
           refetchOrders(),
           fetch('/api/credits', { headers: await authHeaders() })
             .then((r) => r.json())
             .then((c) => { if (typeof c.credits === 'number') setCredits(c.credits); }),
         ]);
-      } catch {
-        router.push('/checkout');
+      } catch (e) {
+        // Keep the brief in sessionStorage so nothing is lost; the song itself
+        // was already delivered in the wizard.
+        console.error('Could not save the song to the library:', e);
       } finally {
         setFinalizing(false);
       }

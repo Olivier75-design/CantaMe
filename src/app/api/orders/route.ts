@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyAdminRequest, getUserFromRequest, isAdminEmail } from '@/lib/admin';
+import { getUserFromRequest, isAdminEmail } from '@/lib/admin';
 
 // Create an order. Identity (owner id + email) is taken from the authenticated
 // session, never from the body — otherwise anyone could create orders in
@@ -11,6 +11,16 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json();
+
+    // A song is composed BEFORE the order exists (generation is the metered
+    // step), so an order that already carries its audio is READY on creation.
+    // The URL must be one of ours — never trust an arbitrary external link.
+    const base = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
+    const ownAudio =
+      typeof body.audioUrl === 'string' &&
+      !!base &&
+      body.audioUrl.startsWith(`${base}/storage/v1/object/public/songs/`);
+    const status = ownAudio ? 'READY' : 'PENDING_PAYMENT';
 
     const order = await db.createOrder({
       userId: user.id,
@@ -25,9 +35,9 @@ export async function POST(request: NextRequest) {
       voiceGender: body.voiceGender || 'female',
       tier: body.tier || 'basica',
       price: body.price || 10,
-      status: 'PENDING_PAYMENT',
+      status,
       language: body.songLanguage || 'es',
-      audioUrl: body.audioUrl,
+      audioUrl: ownAudio ? body.audioUrl : undefined,
       instrumentalUrl: body.instrumentalUrl,
       lyrics: body.lyrics,
     });

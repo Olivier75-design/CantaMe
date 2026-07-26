@@ -57,12 +57,17 @@ export const OCCASION_STYLE_MAP: Record<string, string[]> = {
 // ─── Credit-based pricing (replaces the old subscription tiers) ───
 // Internally we bill in credits (1 song = 20, 1 revision = 10) so a revision can
 // cost half a song. Customers, however, see everything in *songs* — packs below
-// carry a `songs` count for display. New accounts get 20 credits = 1 free song
-// (the 30s preview is always free); influencer promo codes discount the price
+// carry a `songs` count for display. Influencer promo codes discount the price
 // (see lib/promo.ts), never the number of credits granted.
+//
+// FREE SONGS — there is no preview, so every generation is a real full song.
+// Generation is never gated behind sign-in; DOWNLOADING is:
+//   Guest    : generate + listen for free, but must sign in to download
+//   On signup: granted freeOnSignup credits (= 1 more song) and can download
+//   After    : buy a pack below
 export const CREDITS = {
-  freeOnSignup: 20, // 1 free song for a brand-new account
-  perSong: 20, // credits consumed to unlock/create a song
+  freeOnSignup: 20, // = 1 free song, granted to a brand-new account
+  perSong: 20, // credits consumed to generate a song
   perRevision: 10, // credits consumed per revision
   packs: [
     { id: 'pack_1',  songs: 1,  credits: 20,  price: 4.99 },                    // 1 song

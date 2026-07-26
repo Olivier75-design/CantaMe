@@ -144,7 +144,6 @@ export default function AdminPage() {
     songLanguage: 'es',
     anecdote1: '',
     message: '',
-    preview: true,
   });
   const [studioLoading, setStudioLoading] = useState(false);
   const [studioError, setStudioError] = useState('');
@@ -910,6 +909,10 @@ export default function AdminPage() {
                       <select className="input-field" value={studioForm.voiceGender} onChange={(e) => setStudioForm((p) => ({ ...p, voiceGender: e.target.value }))}>
                         <option value="female">{isEn ? 'Female' : 'Femenina'}</option>
                         <option value="male">{isEn ? 'Male' : 'Masculina'}</option>
+                        <option value="duo">{isEn ? 'Female + Male' : 'Femenina + Masculina'}</option>
+                        <option value="femaleKids">{isEn ? 'Female + Kids' : 'Femenina + Niños'}</option>
+                        <option value="maleKids">{isEn ? 'Male + Kids' : 'Masculina + Niños'}</option>
+                        <option value="all">{isEn ? 'Everyone (F + M + Kids)' : 'Todos (F + M + Niños)'}</option>
                       </select>
                     </div>
                     <div className="input-group">
@@ -930,10 +933,11 @@ export default function AdminPage() {
                     <textarea className="input-field" rows={2} value={studioForm.message} onChange={(e) => setStudioForm((p) => ({ ...p, message: e.target.value }))} />
                   </div>
 
-                  <label className="flex items-center gap-sm" style={{ cursor: 'pointer' }}>
-                    <input type="checkbox" checked={studioForm.preview} onChange={(e) => setStudioForm((p) => ({ ...p, preview: e.target.checked }))} />
-                    <span className="body-sm">{isEn ? 'Quick preview (~30-40s, faster)' : 'Vista previa rápida (~30-40s, más rápido)'}</span>
-                  </label>
+                  <p className="body-sm" style={{ opacity: 0.7 }}>
+                    {isEn
+                      ? 'Renders the full song (about 2 min) — same pipeline as customers.'
+                      : 'Genera la canción completa (unos 2 min) — el mismo proceso que los clientes.'}
+                  </p>
 
                   <button type="submit" className="btn btn-primary" disabled={studioLoading}>
                     {studioLoading ? (isEn ? 'Generating…' : 'Generando…') : (isEn ? '🎶 Generate' : '🎶 Generar')}

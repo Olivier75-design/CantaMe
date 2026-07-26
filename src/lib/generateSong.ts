@@ -1,5 +1,5 @@
 // Shared song-generation pipeline (MiniMax lyrics + music), used by
-// /api/generate-song (preview) and /api/orders/[id] (live revision).
+// /api/generate-song (the customer's song) and /api/orders/[id] (live revision).
 // Audio is uploaded to Supabase Storage instead of local filesystem.
 import { randomUUID } from 'node:crypto';
 import { buildStylePrompt, type SongBrief } from './musicPrompts';
@@ -33,7 +33,34 @@ export interface GenerateInput extends SongBrief {
   songLanguage?: string;
   lyrics?: string; // pre-written / user-edited lyrics; skips generation when present
   title?: string;
-  preview?: boolean; // deprecated (songs are concise by default now); ignored
+}
+
+// MiniMax silently truncates over-long lyrics, which cuts the vocal off
+// mid-phrase and sounds broken. If the writer overshoots, cut it ourselves at a
+// clean boundary instead: prefer the end of a tagged section, else the last
+// whole line. A slightly shorter song always beats a garbled one.
+const LYRICS_MAX_CHARS = 1500;
+
+function fitLyricsToWindow(full: string): string {
+  if (full.length <= LYRICS_MAX_CHARS) return full;
+
+  const lines = full.split('\n');
+  let used = 0;
+  let lastLine = 0; // lines kept up to the last complete line
+  let lastSection = 0; // lines kept up to the end of the last complete section
+
+  for (let i = 0; i < lines.length; i++) {
+    const next = used + lines[i].length + 1;
+    if (next > LYRICS_MAX_CHARS) break;
+    // A new section tag means everything before it is a complete section.
+    if (/^\s*\[[^\]]+\]/.test(lines[i]) && i > 0) lastSection = i;
+    used = next;
+    lastLine = i + 1;
+  }
+
+  const cut = lastSection > 0 ? lastSection : lastLine;
+  const result = lines.slice(0, cut).join('\n').trim();
+  return result || full.slice(0, LYRICS_MAX_CHARS);
 }
 
 // Full pipeline: lyrics -> music -> uploaded to Supabase Storage. Returns the public URL + metadata.
@@ -57,10 +84,10 @@ export async function generateSongFile(
   }
 
   const prompt = buildStylePrompt(input.style, input.tone, input.voiceGender);
-  // Songs are intentionally concise (~1 min), so this single fast generation
-  // serves as the instant preview AND is reused as the final track — the 30s
-  // preview is always the real song's opening, never a separate composition.
-  const audio = await generateMusic(prompt, lyrics);
+  // One generation produces the real, full-length (~2 min) song the customer
+  // keeps — there is no separate preview render. Guard the lyrics window so the
+  // vocal never gets cut off mid-phrase by the music model.
+  const audio = await generateMusic(prompt, fitLyricsToWindow(lyrics));
 
   // Upload to Supabase Storage
   const supabase = getSupabaseServer();
