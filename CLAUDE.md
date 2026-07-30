@@ -11,8 +11,10 @@ Repo: `github.com/Olivier75-design/CantaMe`, deploys to Vercel from `main`. Stac
 ## Commands
 
 ```bash
-npm run dev      # dev server (Next 16 + Turbopack). Defaults to :3000;
-                 # on this machine :3000 is taken by another project, so it serves :3001
+npm run dev      # dev server (Next 16 + Turbopack). Wants :3000, but several ports
+                 # are usually taken on this machine — read the port it prints.
+                 # Next refuses a 2nd dev server on the same dir: if it exits with
+                 # "Another next dev server is already running", kill that PID first.
 npm run build    # production build — ALSO runs full TypeScript type-check (use this to validate types)
 npm run lint     # eslint
 npm run start    # serve the production build
@@ -44,12 +46,32 @@ Core is `src/lib/generateSong.ts` — `generateSongFile(input)`:
 2. **Music** via MiniMax `music-2.6` (`/v1/music_generation`) — returns **hex-encoded** mp3 (decoded to a Buffer).
 3. Audio uploaded to Supabase Storage bucket `songs` (must be **public** for playback); returns public URL + `{title, lyrics}`.
 
-Prompts live in `src/lib/musicPrompts.ts`: `buildStylePrompt(style, tone, voiceGender)` and `buildLyricsMessages(brief, language, revisionNotes?)` (bilingual, revision-aware).
+**There is no preview.** `POST /api/generate-song` composes the **real, full-length (~2 min) song the customer keeps** — so it is the *metered* action, not checkout:
+- **Guest (not signed in)**: may generate and listen, is **not charged** and **not blocked**; only the IP rate limit applies (5/60s).
+- **Signed in**: `spendCredits(perSong)` runs **before** generation and is **refunded** (`addCredits`) if generation throws.
 
-**Preview vs full song** (important): the guest wizard preview generates a short **teaser** (`preview: true`) for speed — this is **free** and rate-limited by IP (`POST /api/generate-song`, 5/60s). The **full-length** song is generated **in the background after purchase** via `PUT /api/orders/[id]` with `action: 'generate_full'` — that path is authenticated, idempotent (returns early if already `READY`), does **not** re-charge credits, and composes from the exact (possibly user-edited) lyrics stored on the order. Revisions also go through `PUT /api/orders/[id]`. All generation routes set `runtime='nodejs'` + `maxDuration=300` → requires a Vercel **Pro** plan (Hobby's 60s cap fails the build).
+`PUT /api/orders/[id]` with `action:'generate_full'` no longer regenerates: it **reuses the audio already on the order** (regenerating produced a different melody than the one the customer heard — that mismatch was a real bug). It only composes as a fallback when an order somehow has no audio. Revisions (`action:'request_revision'`) *do* regenerate on purpose and cost `perRevision`. All generation routes set `runtime='nodejs'` + `maxDuration=300` → requires a Vercel **Pro** plan (Hobby's 60s cap fails the build).
+
+**Prompt budgets — these directly control output quality** (`src/lib/musicPrompts.ts`):
+- `buildStylePrompt(style, tone, voiceGender)` must stay **≲300 chars**. MiniMax dilutes longer prompts, and instructions near the end get dropped — a 364-char prompt is why the kids' choir came out inaudible. Put what matters (genre, then voices) early and keep `PRODUCTION_HINT` short.
+- `buildLyricsMessages(brief, language, revisionNotes?)` — bilingual, revision-aware, and written as hit-songwriter craft rules (concrete imagery over stated emotion, one repeated hook carrying the name, banned clichés, fixed `[verse][chorus][verse][chorus][bridge][chorus]` structure).
+- `fitLyricsToWindow()` in `generateSong.ts` caps lyrics at `LYRICS_MAX_CHARS` (1500), cutting at a **section boundary** — MiniMax silently truncates over-long lyrics mid-phrase, which sounds broken.
+
+**Voice line-ups** — six keys (`female`, `male`, `duo`, `femaleKids`, `maleKids`, `all`) that must stay in sync across **three** places: `VOICE_HINT` (musicPrompts), `VOICE_ICONS` (constants), and `form.voices` in **both** locale files. A kids' choir is always *accompaniment*: loud and up front on the chorus, never leading, verses are lead-only.
 
 ### Credits (the billing unit)
-`src/lib/credits.ts`. Balances are stored in **Supabase Auth `app_metadata.credits`** (server-controlled — a user can't edit their own app_metadata; only the service_role key can), so there's no separate table. Internally billed in credits: **1 song = 20, 1 revision = 10** (`CREDITS` in `lib/constants.ts`); new accounts get **20 free (= 1 song)** auto-initialized on first read. Customers see everything in *songs*, not credits. Credits are granted **only** by `creditForPayment()` after a verified payment — `GET /api/credits` (session-scoped) is read-only and there is intentionally **no POST** (a public "add credits" route would let anyone mint credits).
+`src/lib/credits.ts`. Balances are stored in **Supabase Auth `app_metadata.credits`** (server-controlled — a user can't edit their own app_metadata; only the service_role key can), so there's no separate table. Internally billed in credits: **1 song = 20, 1 revision = 10** (`CREDITS` in `lib/constants.ts`); new accounts get **20 free (= 1 song)** auto-initialized on first read. Customers see everything in *songs*, not credits.
+
+Credits are **granted** only by `creditForPayment()` after a verified payment — `GET /api/credits` (session-scoped) is read-only and there is intentionally **no POST** (a public "add credits" route would let anyone mint credits). They are **spent** in `/api/generate-song` (and on revisions), *not* at checkout.
+
+⚠️ **Known incentive inversion**: guests generate unlimited free songs while signed-in users pay 20 credits each, so signing out is cheaper — and every guest generation costs real MiniMax money. Deliberate (acquisition first), but revisit before scaling spend.
+
+### Downloading (the sign-in gate)
+Listening is free for everyone; **downloading requires an account**. `GET /api/songs/download?url=&name=` serves songs that have no order row yet (the wizard's button) and:
+- requires a valid Bearer token → **a plain `<a href>` cannot carry the Supabase JWT**, so the client must `fetch` with `authHeaders()` and hand the browser a blob (see `handleDownload` in `page.tsx` / `create/preview/page.tsx`);
+- only accepts URLs under our own `…/storage/v1/object/public/songs/` prefix, otherwise it would be an open proxy (SSRF).
+
+`GET /api/orders/[id]/download` (dashboard/share) is the order-based path and currently has **no auth check** — anyone with an order id can fetch the song. Pre-existing; left open because the share page depends on it.
 
 ### Payments (Moneroo — real, not mock)
 `src/lib/moneroo.ts` + routes under `src/app/api/payments/*`, `src/app/payments/callback`, `src/app/api/webhooks/moneroo`.
@@ -83,13 +105,27 @@ One global stylesheet `src/app/globals.css` with CSS custom properties in `:root
 `page_views` is a server-side, ad-blocker-proof counter populated by `src/middleware.ts` (visible in Admin → Traffic). Vercel Analytics always runs; GA4 loads only when `NEXT_PUBLIC_GA_ID` is set (`components/GoogleAnalytics.tsx`).
 
 ### Constants
-`src/lib/constants.ts` — `OCCASIONS`, `MUSIC_STYLES` (id/icon/color/`nameKey`), `OCCASION_STYLE_MAP` ("Surprise Me"), `CREDITS` (pricing/packs — replaces the old subscription tiers), `GALLERY_SAMPLES`.
+`src/lib/constants.ts` — `OCCASIONS`, `MUSIC_STYLES` (id/icon/color/`nameKey`), `OCCASION_STYLE_MAP` ("Surprise Me"), `VOICE_ICONS` (shared by both wizards), `CREDITS` (pricing/packs — replaces the old subscription tiers), `GALLERY_SAMPLES`. Note `MUSIC_STYLES[].audioUrl` still points at **SoundHelix placeholder MP3s**, not real style samples.
 
 ## User flow & order lifecycle
 
-Brief is collected via the home wizard (`/`, scrolls to `#studio`) or the multi-step `/create` → `/create/details` → `/create/preview` pages → a **real** teaser preview via `/api/generate-song` → pick a pack → `/signin` (auth) → **Moneroo** hosted checkout (`/api/payments/create` → `/payments/callback`) → credits granted → full song generated in background (`PUT /api/orders/[id]` `generate_full`) → `/dashboard`. Orders link to the user by id/`client_email`; the dashboard loads them via `/api/orders?email=`. Revisions: `/order/[id]/review` → `PUT /api/orders/[id]`. The in-progress brief is passed between steps in `sessionStorage['ct-order']`.
+**Two wizards exist and must be kept in step** — the home one (`/`, scrolls to `#studio`, steps 1-5 in `page.tsx`) and the multi-page `/create` → `/create/details` → `/create/preview`. They are near-duplicates, and drift between them has caused real bugs (the voice picker existed in only one of them). Header "Create My Song" and the dashboard both link to `/create`.
 
-Order status: `PENDING_PAYMENT` → (payment) `READY`. Others: `IN_PRODUCTION`, `REVISION_REQUESTED`, `DELIVERED`.
+Flow: brief → editable lyrics (`/api/generate-lyrics`, public + IP-limited) → **the song itself** (`/api/generate-song`) → play it / download it (sign-in required) → sign in to save it. The brief travels in `sessionStorage['ct-order']`.
+
+On the dashboard, a pending `ct-order` is turned into an order via `POST /api/orders` with the audio attached — and **`/api/checkout` is deliberately NOT called**, because the credit was already spent at generation (calling it would double-charge). `POST /api/orders` sets status **`READY`** when `audioUrl` points at our own storage bucket (validated prefix), else `PENDING_PAYMENT`.
+
+A brief with **no audio** on the dashboard is only resumed at `/create/preview` when the user just came back from a credit purchase (`?paid=1`); otherwise it's stale junk and is discarded. Do not "helpfully" redirect here — `/create/preview` starts composing on mount, so redirecting a returning user there charges them 20 credits for a song they never asked for.
+
+Orders link to the user by id/`client_email`; the dashboard loads them via `/api/orders?email=`. Revisions: `/order/[id]/review` → `PUT /api/orders/[id]`.
+
+Order status: `PENDING_PAYMENT`, `IN_PRODUCTION`, `READY`, `REVISION_REQUESTED`, `DELIVERED`.
+
+**Stale path to watch**: `/checkout`'s "use a credit" branch still creates an order and calls `/api/checkout` (spending credits) without generating anything. It's effectively unreachable now (users only land there with 0 credits, i.e. the *buy* branch), but it would double-charge if it were reached.
+
+### Front-end gotchas that cost real debugging time
+- **Generated MP3s report `duration = Infinity`** until the browser scans to the end, so timers show `0:00 / 0:00` and progress never advances. The dashboard player probes the real duration by seeking past the end once, then resetting (see `playIntentRef` / `probing`).
+- **The song-language picker must stay above the "Suggest memory/message" fields.** Those suggestions are pulled from `TEMPLATES` in the *currently selected* language, so a picker placed after them yields suggestions in the wrong language.
 
 ## Vercel deployment gotchas (all have caused production 404s)
 
