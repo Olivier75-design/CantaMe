@@ -51,6 +51,32 @@ create table if not exists public.page_views (
 create index if not exists page_views_created_at_idx on public.page_views (created_at desc);
 
 
+-- 1e) Contact form messages (footer "Contact us" modal → Admin → Messages tab).
+--     Replaces the old hello@cantame.app mailto link.
+create table if not exists public.contact_messages (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text not null,
+  subject text not null default 'general',   -- general | order | payment | other
+  message text not null,
+  status text not null default 'new',        -- new | read | replied | archived
+  admin_note text,
+  user_id uuid,                              -- set when the sender was signed in
+  ip text,
+  user_agent text,
+  locale text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+create index if not exists contact_messages_created_at_idx on public.contact_messages (created_at desc);
+create index if not exists contact_messages_status_idx on public.contact_messages (status);
+
+-- IMPORTANT: RLS on with NO policies = only the service_role key can touch this
+-- table. Visitor names/emails must never be readable from the browser, so unlike
+-- the app tables below this one deliberately gets no permissive policy.
+alter table public.contact_messages enable row level security;
+
+
 -- ── Everything below is ONLY needed if you do NOT set the service_role key ──
 
 -- 2) Storage policies: allow read/insert/update on the "songs" bucket.

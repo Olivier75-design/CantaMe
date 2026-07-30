@@ -1,6 +1,7 @@
 'use client';
 
 import { useLanguage } from '@/context/LanguageContext';
+import { openContactModal } from '@/components/ContactModal';
 
 // Simple bilingual legal page. Content is kept inline (not in locale JSON) to
 // avoid bloating the translation files with long-form legal copy; language is
@@ -43,7 +44,7 @@ export default function PrivacyPage() {
         },
         {
           h: '8. Contact',
-          p: 'Questions about this policy? Email us at hello@cantame.app.',
+          p: 'Questions about this policy, or want to exercise your rights above? Use the contact form below and we will get back to you.',
         },
       ]
     : [
@@ -77,7 +78,7 @@ export default function PrivacyPage() {
         },
         {
           h: '8. Contacto',
-          p: '¿Preguntas sobre esta política? Escríbenos a hello@cantame.app.',
+          p: '¿Preguntas sobre esta política, o quieres ejercer los derechos anteriores? Usa el formulario de contacto abajo y te responderemos.',
         },
       ];
 
@@ -97,6 +98,10 @@ export default function PrivacyPage() {
             </div>
           ))}
         </div>
+
+        <button type="button" className="btn btn-primary" onClick={openContactModal}>
+          ✉️ {t('contact.open')}
+        </button>
       </div>
     </div>
   );

@@ -60,6 +60,36 @@ interface StudioResult {
   lyrics: string;
 }
 
+interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  status: string;
+  adminNote: string | null;
+  userId: string | null;
+  locale: string | null;
+  createdAt: string;
+}
+
+const CONTACT_STATUS_COLORS: Record<string, string> = {
+  new: '#F25F4C',
+  read: '#FF8906',
+  replied: '#2CB67D',
+  archived: '#888',
+};
+
+// Mirrors `contact.subjects.*` in the locale files. Duplicated here because the
+// admin renders in whichever language the admin is browsing in, independently of
+// the language the visitor wrote in.
+const CONTACT_SUBJECT_LABELS: Record<string, { en: string; es: string }> = {
+  general: { en: 'General question', es: 'Pregunta general' },
+  order: { en: 'My order', es: 'Mi pedido' },
+  payment: { en: 'Payment', es: 'Pago' },
+  other: { en: 'Something else', es: 'Otro tema' },
+};
+
 const STUDIO_OCCASIONS = ['cumpleanos', 'boda', 'quinceanera', 'serenata', 'diaMadres', 'graduacion', 'declaracion', 'sanValentin', 'bautizo', 'otro'];
 const STUDIO_TONES = ['emotional', 'festive', 'romantic', 'funny'];
 
@@ -92,7 +122,7 @@ export default function AdminPage() {
   const router = useRouter();
   const isAdmin = isAdminEmail(user?.email);
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'styles' | 'traffic' | 'studio' | 'users'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'styles' | 'traffic' | 'studio' | 'users' | 'messages'>('orders');
 
   // Traffic (server-side, ad-blocker-proof analytics)
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -155,6 +185,12 @@ export default function AdminPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersSearched, setUsersSearched] = useState(false);
 
+  // Contact form messages (footer modal → this tab)
+  const [messages, setMessages] = useState<ContactMessage[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [messageFilter, setMessageFilter] = useState('all');
+  const [loadingMessages, setLoadingMessages] = useState(true);
+
   const fetchOrders = useCallback(async () => {
     try {
       const res = await fetch('/api/orders', { headers: await authHeaders() });
@@ -188,12 +224,52 @@ export default function AdminPage() {
     setLoadingAnalytics(false);
   }, [authHeaders]);
 
+  const fetchMessages = useCallback(async () => {
+    setLoadingMessages(true);
+    try {
+      const res = await fetch(`/api/admin/contact?status=${messageFilter}`, { headers: await authHeaders() });
+      const data = await res.json();
+      setMessages(Array.isArray(data.messages) ? data.messages : []);
+      setUnreadCount(data.unread || 0);
+    } catch {
+      setMessages([]);
+    }
+    setLoadingMessages(false);
+  }, [authHeaders, messageFilter]);
+
   useEffect(() => {
     if (!isAdmin) return;
     fetchOrders();
     fetchStyles();
     fetchAnalytics();
   }, [isAdmin, fetchOrders, fetchStyles, fetchAnalytics]);
+
+  // Separate effect: refetches when the status filter changes, and keeps the
+  // unread badge current without re-running the other three fetches.
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetchMessages();
+  }, [isAdmin, fetchMessages]);
+
+  // Reply from the admin's own mailbox: a mailto: link pre-filled with the
+  // original message quoted. This is why the app needs no SMTP/sending service.
+  const replyHref = (m: ContactMessage) => {
+    const label = CONTACT_SUBJECT_LABELS[m.subject]?.[isEn ? 'en' : 'es'] || m.subject;
+    const greeting = isEn ? `Hi ${m.name},` : `Hola ${m.name},`;
+    const wrote = isEn ? 'You wrote:' : 'Escribiste:';
+    const quoted = m.message.split('\n').map((l) => `> ${l}`).join('\n');
+    const body = `${greeting}\n\n\n\n---\n${wrote}\n${quoted}\n`;
+    return `mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent(`Re: ${label} — CantaMe`)}&body=${encodeURIComponent(body)}`;
+  };
+
+  const updateMessage = async (id: string, patch: { status?: string; adminNote?: string }) => {
+    await fetch(`/api/admin/contact/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify(patch),
+    });
+    fetchMessages();
+  };
 
   const filteredOrders = filterStatus === 'all'
     ? orders
@@ -434,6 +510,27 @@ export default function AdminPage() {
                 onClick={() => setActiveTab('users')}
               >
                 👤 {isEn ? 'Users' : 'Usuarios'}
+              </button>
+              <button
+                className={activeTab === 'messages' ? 'active' : ''}
+                onClick={() => setActiveTab('messages')}
+              >
+                ✉️ {isEn ? 'Messages' : 'Mensajes'}
+                {unreadCount > 0 && (
+                  <span
+                    style={{
+                      marginLeft: 6,
+                      background: '#F25F4C',
+                      color: '#fff',
+                      borderRadius: 999,
+                      padding: '0 6px',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {unreadCount}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -1043,6 +1140,120 @@ export default function AdminPage() {
               ) : (
                 <div className="text-center" style={{ padding: 'var(--space-2xl)' }}>
                   <p className="body-md" style={{ color: 'var(--text-muted)' }}>{isEn ? 'Search for a customer to manage their credits.' : 'Busca un cliente para gestionar sus créditos.'}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 6: CONTACT MESSAGES */}
+          {activeTab === 'messages' && (
+            <div className="animate-fade-in">
+              <div className="flex items-center justify-between mb-lg" style={{ flexWrap: 'wrap', gap: 'var(--space-md)' }}>
+                <h2 className="heading-md">✉️ {isEn ? 'Contact messages' : 'Mensajes de contacto'}</h2>
+                <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+                  {['all', 'new', 'read', 'replied', 'archived'].map((s) => (
+                    <button
+                      key={s}
+                      className={`btn btn-sm ${messageFilter === s ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => setMessageFilter(s)}
+                    >
+                      {isEn
+                        ? s[0].toUpperCase() + s.slice(1)
+                        : { all: 'Todos', new: 'Nuevos', read: 'Leídos', replied: 'Respondidos', archived: 'Archivados' }[s]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)' }}>
+                {isEn
+                  ? 'Sent from the "Contact us" form in the footer. Reply opens your own mail app with the message quoted.'
+                  : 'Enviados desde el formulario "Contáctanos" del pie de página. Responder abre tu app de correo con el mensaje citado.'}
+              </p>
+
+              {loadingMessages ? (
+                <div className="text-center"><div className="spinner-lg" style={{ margin: '2rem auto' }} /></div>
+              ) : messages.length === 0 ? (
+                <div className="text-center" style={{ padding: 'var(--space-2xl)' }}>
+                  <p className="body-md" style={{ color: 'var(--text-muted)' }}>
+                    {isEn ? 'No messages yet.' : 'Aún no hay mensajes.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-md">
+                  {messages.map((m) => (
+                    <div key={m.id} className="card">
+                      <div className="flex justify-between items-center mb-sm" style={{ flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <strong>{m.name}</strong>{' '}
+                          <a href={`mailto:${m.email}`} className="body-sm">{m.email}</a>
+                        </div>
+                        <div className="flex items-center gap-sm" style={{ flexWrap: 'wrap' }}>
+                          <span
+                            style={{
+                              background: CONTACT_STATUS_COLORS[m.status] || '#888',
+                              color: '#fff',
+                              borderRadius: 999,
+                              padding: '2px 10px',
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {m.status}
+                          </span>
+                          <span className="body-sm" style={{ color: 'var(--text-muted)' }}>
+                            {new Date(m.createdAt).toLocaleString(isEn ? 'en-US' : 'es-ES')}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="body-sm mb-sm" style={{ color: 'var(--text-muted)' }}>
+                        {CONTACT_SUBJECT_LABELS[m.subject]?.[isEn ? 'en' : 'es'] || m.subject}
+                        {m.userId && ` · ${isEn ? 'registered customer' : 'cliente registrado'}`}
+                        {m.locale && ` · ${m.locale.toUpperCase()}`}
+                      </div>
+
+                      <p className="body-md" style={{ whiteSpace: 'pre-wrap', marginBottom: 'var(--space-md)' }}>
+                        {m.message}
+                      </p>
+
+                      <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+                        <a
+                          className="btn btn-sm btn-primary"
+                          href={replyHref(m)}
+                          onClick={() => updateMessage(m.id, { status: 'replied' })}
+                        >
+                          ↩️ {isEn ? 'Reply' : 'Responder'}
+                        </a>
+                        {m.status === 'new' && (
+                          <button className="btn btn-sm btn-ghost" onClick={() => updateMessage(m.id, { status: 'read' })}>
+                            {isEn ? 'Mark read' : 'Marcar leído'}
+                          </button>
+                        )}
+                        {m.status !== 'archived' && (
+                          <button className="btn btn-sm btn-ghost" onClick={() => updateMessage(m.id, { status: 'archived' })}>
+                            {isEn ? 'Archive' : 'Archivar'}
+                          </button>
+                        )}
+                        <button
+                          className="btn btn-sm btn-ghost"
+                          onClick={() => {
+                            const v = window.prompt(isEn ? 'Private note:' : 'Nota privada:', m.adminNote || '');
+                            if (v != null) updateMessage(m.id, { adminNote: v });
+                          }}
+                        >
+                          📝 {isEn ? 'Note' : 'Nota'}
+                        </button>
+                      </div>
+
+                      {m.adminNote && (
+                        <p className="body-sm" style={{ marginTop: 'var(--space-md)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                          📝 {m.adminNote}
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

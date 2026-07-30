@@ -408,6 +408,37 @@
     "contact": "Contacto",
     "rights": "Todos los derechos reservados."
   },
+  "contact": {
+    "open": "Contáctanos",
+    "title": "Contáctanos",
+    "subtitle": "¿Una pregunta sobre tu canción, un pedido o un pago? Escríbenos y te ayudamos.",
+    "name": "Tu nombre",
+    "namePlaceholder": "María García",
+    "email": "Tu correo",
+    "emailPlaceholder": "tu@ejemplo.com",
+    "subject": "Asunto",
+    "subjects": {
+      "general": "Pregunta general",
+      "order": "Mi pedido",
+      "payment": "Pago",
+      "other": "Otro tema"
+    },
+    "message": "Tu mensaje",
+    "messagePlaceholder": "Cuéntanos cómo podemos ayudarte...",
+    "send": "Enviar mensaje",
+    "sending": "Enviando...",
+    "reply": "Te respondemos en 24-48 horas.",
+    "successTitle": "Mensaje enviado",
+    "successBody": "¡Gracias {name}! Recibimos tu mensaje y te responderemos a {email} en 24-48 horas.",
+    "done": "Cerrar",
+    "errors": {
+      "name": "Por favor escribe tu nombre.",
+      "email": "Por favor escribe un correo válido.",
+      "message": "Tu mensaje debe tener al menos 10 caracteres.",
+      "rateLimited": "Ya enviaste varios mensajes. Intenta de nuevo en unos minutos.",
+      "generic": "No pudimos enviar tu mensaje. Por favor intenta de nuevo."
+    }
+  },
   "common": {
     "loading": "Cargando...",
     "error": "Algo salió mal. Por favor intenta de nuevo.",

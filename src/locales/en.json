@@ -408,6 +408,37 @@
     "contact": "Contact",
     "rights": "All rights reserved."
   },
+  "contact": {
+    "open": "Contact us",
+    "title": "Contact us",
+    "subtitle": "A question about your song, an order or a payment? Write to us and we'll help.",
+    "name": "Your name",
+    "namePlaceholder": "Maria Garcia",
+    "email": "Your email",
+    "emailPlaceholder": "you@example.com",
+    "subject": "Subject",
+    "subjects": {
+      "general": "General question",
+      "order": "My order",
+      "payment": "Payment",
+      "other": "Something else"
+    },
+    "message": "Your message",
+    "messagePlaceholder": "Tell us how we can help...",
+    "send": "Send message",
+    "sending": "Sending...",
+    "reply": "We'll get back to you within 24-48 hours.",
+    "successTitle": "Message sent",
+    "successBody": "Thanks {name}! We've received your message and we'll get back to you at {email} within 24-48 hours.",
+    "done": "Close",
+    "errors": {
+      "name": "Please enter your name.",
+      "email": "Please enter a valid email address.",
+      "message": "Your message must be at least 10 characters.",
+      "rateLimited": "You've already sent several messages. Please try again in a few minutes.",
+      "generic": "We couldn't send your message. Please try again."
+    }
+  },
   "common": {
     "loading": "Loading...",
     "error": "Something went wrong. Please try again.",

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
+import ContactModal, { openContactModal } from './ContactModal';
 
 export default function Footer() {
   const { t } = useLanguage();
@@ -39,7 +40,23 @@ export default function Footer() {
           <div>
             <h4 className="footer-heading">{t('footer.contact')}</h4>
             <ul className="footer-links">
-              <li><a href="mailto:hello@cantame.app">hello@cantame.app</a></li>
+              <li>
+                <button
+                  type="button"
+                  onClick={openContactModal}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    font: 'inherit',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  {t('contact.open')}
+                </button>
+              </li>
             </ul>
           </div>
         </div>
@@ -48,6 +65,10 @@ export default function Footer() {
           <p>© {year} CantaMe. {t('footer.rights')}</p>
         </div>
       </div>
+
+      {/* Mounted here because <Footer> is in the root layout — this makes the
+          contact form reachable from every page via openContactModal(). */}
+      <ContactModal />
     </footer>
   );
 }

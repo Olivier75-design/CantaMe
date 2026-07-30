@@ -1,6 +1,7 @@
 'use client';
 
 import { useLanguage } from '@/context/LanguageContext';
+import { openContactModal } from '@/components/ContactModal';
 
 // Simple bilingual legal page. See privacy/page.tsx for the rationale on keeping
 // long-form legal copy inline rather than in the locale JSON files.
@@ -50,7 +51,7 @@ export default function TermsPage() {
         },
         {
           h: '10. Contact',
-          p: 'Questions about these terms? Email us at hello@cantame.app.',
+          p: 'Questions about these terms? Use the contact form below and we will get back to you.',
         },
       ]
     : [
@@ -92,7 +93,7 @@ export default function TermsPage() {
         },
         {
           h: '10. Contacto',
-          p: '¿Preguntas sobre estos términos? Escríbenos a hello@cantame.app.',
+          p: '¿Preguntas sobre estos términos? Usa el formulario de contacto abajo y te responderemos.',
         },
       ];
 
@@ -112,6 +113,10 @@ export default function TermsPage() {
             </div>
           ))}
         </div>
+
+        <button type="button" className="btn btn-primary" onClick={openContactModal}>
+          ✉️ {t('contact.open')}
+        </button>
       </div>
     </div>
   );

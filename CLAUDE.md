@@ -91,7 +91,7 @@ Listening is free for everyone; **downloading requires an account**. `GET /api/s
 `src/lib/rateLimit.ts` — `rateLimit(id, max, windowSec)` using Upstash Redis sliding window (shared across serverless instances) with an in-memory per-instance fallback. `clientIp(request)` reads `x-forwarded-for`. Applied on public/paid routes (e.g. generate-song by IP, payments/create by user id).
 
 ### Data layer & DB
-`src/lib/db.ts` — Supabase Postgres. Tables: `orders`, `revisions`, `music_styles`, `payments`, `page_views`. Columns are snake_case; `mapOrder`/`mapStyle`/`mapRevision` attach camelCase aliases so callers can read either (`audio_url` **or** `audioUrl`). `src/lib/supabase.ts`: `getSupabaseBrowser()` (anon, RLS applies) vs `getSupabaseServer()` (service_role, bypasses RLS) — both created lazily inside functions so importing them needs no env vars at build time.
+`src/lib/db.ts` — Supabase Postgres. Tables: `orders`, `revisions`, `music_styles`, `payments`, `page_views`, `contact_messages`. Columns are snake_case; `mapOrder`/`mapStyle`/`mapRevision` attach camelCase aliases so callers can read either (`audio_url` **or** `audioUrl`). `src/lib/supabase.ts`: `getSupabaseBrowser()` (anon, RLS applies) vs `getSupabaseServer()` (service_role, bypasses RLS) — both created lazily inside functions so importing them needs no env vars at build time.
 
 **`supabase-setup.sql`** (run once in the Supabase SQL Editor) is the source of truth for the schema: creates the public `songs` bucket, adds `orders.lyrics`, the `payments` table (+ promo/amount/influencer columns), and `page_views`. RLS approach: setting `SUPABASE_SERVICE_ROLE_KEY` bypasses RLS, so only the public-bucket section is strictly required; the storage/RLS policy sections are only needed if you run on the anon key.
 
@@ -103,6 +103,17 @@ One global stylesheet `src/app/globals.css` with CSS custom properties in `:root
 
 ### Analytics
 `page_views` is a server-side, ad-blocker-proof counter populated by `src/middleware.ts` (visible in Admin → Traffic). Vercel Analytics always runs; GA4 loads only when `NEXT_PUBLIC_GA_ID` is set (`components/GoogleAnalytics.tsx`).
+
+### Contact form
+There is **no real mailbox** — `hello@cantame.app` never existed and was removed. Visitors write through a modal (`components/ContactModal.tsx`), mounted by `Footer` (which is in the root layout, so it is reachable everywhere). Anything can open it by calling the exported `openContactModal()`, which dispatches a `cantame:contact` window event — that's how `/privacy` and `/terms` reuse the one form without duplicating it.
+
+`POST /api/contact` is public: IP rate limit (3 / 10 min), a hidden `website` **honeypot** (filled → return 200 and write nothing, so the bot doesn't retry), then server-side validation via `validateContactInput()` in `src/lib/contact.ts`. A signed-in sender's `user_id` is attached when a valid Bearer token comes along.
+
+`contact_messages` has **RLS enabled with no policies** — unlike the other app tables, which carry permissive `using (true)` policies. That's deliberate: only the service_role key may read it, so visitor names/emails are not exposed to the browser even through the anon key. Don't add a policy to "fix" a read problem; use a server route.
+
+Admin → **Messages** tab lists them (`GET /api/admin/contact`, `PATCH /api/admin/contact/[id]`), with an unread badge. The **Reply** button is a pre-filled `mailto:` — the admin answers from their own mailbox, which is why the app needs no SMTP or sending service (same constraint that makes sign-up use `admin.createUser`).
+
+`src/lib/contact.ts` is **server-only** (it imports `getSupabaseServer()`); the shared `CONTACT_SUBJECTS` whitelist lives in `lib/constants.ts` so the client modal can render it — same split as `promo.ts` / `promoClient.ts`.
 
 ### Constants
 `src/lib/constants.ts` — `OCCASIONS`, `MUSIC_STYLES` (id/icon/color/`nameKey`), `OCCASION_STYLE_MAP` ("Surprise Me"), `VOICE_ICONS` (shared by both wizards), `CREDITS` (pricing/packs — replaces the old subscription tiers), `GALLERY_SAMPLES`. Note `MUSIC_STYLES[].audioUrl` still points at **SoundHelix placeholder MP3s**, not real style samples.

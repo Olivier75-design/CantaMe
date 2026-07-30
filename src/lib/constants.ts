@@ -87,6 +87,14 @@ export const CREDITS = {
   ]
 } as const;
 
+// Contact form subjects. The `id` is what gets stored in contact_messages.subject
+// and is validated server-side as a whitelist; the label is looked up in the
+// locale files under `contact.subjects.<id>`. Lives here (not in lib/contact.ts)
+// because both the client modal and the server route need it, and contact.ts
+// pulls in the service-role Supabase client — same split as promo/promoClient.
+export const CONTACT_SUBJECTS = ['general', 'order', 'payment', 'other'] as const;
+export type ContactSubject = (typeof CONTACT_SUBJECTS)[number];
+
 // Sample gallery entries for demo purposes
 export interface GalleryEntry {
   id: string;
