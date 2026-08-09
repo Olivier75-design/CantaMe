@@ -101,6 +101,8 @@
       "abuelo": "Abuelo",
       "hermana": "Hermana",
       "hermano": "Hermano",
+      "tia": "Tía",
+      "tio": "Tío",
       "otro": "Otro"
     },
     "anecdote1": "Un recuerdo o anécdota especial",
@@ -126,10 +128,7 @@
     "voices": {
       "female": "Voz Femenina",
       "male": "Voz Masculina",
-      "duo": "Femenina + Masculina",
-      "femaleKids": "Femenina + Niños",
-      "maleKids": "Masculina + Niños",
-      "all": "Todos (F + M + Niños)"
+      "duo": "Femenina + Masculina"
     },
     "voiceHint": "Los niños solo hacen coros en el estribillo — la voz principal es siempre la que elijas.",
     "generatePreview": "Generar Mi Canción ✨",
@@ -407,6 +406,13 @@
     "terms": "Términos de Servicio",
     "contact": "Contacto",
     "rights": "Todos los derechos reservados."
+  },
+  "rating": {
+    "question": "¿Qué te parece esta canción?",
+    "good": "Me encanta",
+    "bad": "No me convence",
+    "thanks": "Gracias — esto nos ayuda a escribir mejores canciones.",
+    "failed": "No pudimos guardar tu valoración. Inténtalo de nuevo."
   },
   "contact": {
     "open": "Contáctanos",

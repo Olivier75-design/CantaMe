@@ -77,6 +77,36 @@ create index if not exists contact_messages_status_idx on public.contact_message
 alter table public.contact_messages enable row level security;
 
 
+-- 1f) Song ratings: the thumbs up/down the customer gives the finished song.
+--     The point is to stop tuning prompts blind — every row snapshots the
+--     settings that produced the song (style/tone/voice/occasion), so quality
+--     can be compared per style or per voice WITHOUT joining orders, and it
+--     still works for wizard songs that never became an order.
+create table if not exists public.song_ratings (
+  id uuid primary key default gen_random_uuid(),
+  rating text not null,              -- up | down
+  order_id text,                     -- null when rated straight from the wizard
+  audio_url text,
+  style text,
+  tone text,
+  voice_gender text,
+  occasion text,
+  language text,
+  user_id uuid,
+  ip text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+-- One rating per song: re-rating updates the row instead of stacking duplicates
+-- that would skew the averages.
+create unique index if not exists song_ratings_audio_url_key on public.song_ratings (audio_url);
+create index if not exists song_ratings_created_at_idx on public.song_ratings (created_at desc);
+create index if not exists song_ratings_style_idx on public.song_ratings (style);
+
+-- RLS on with no policies: service_role only, same reasoning as contact_messages.
+alter table public.song_ratings enable row level security;
+
+
 -- ── Everything below is ONLY needed if you do NOT set the service_role key ──
 
 -- 2) Storage policies: allow read/insert/update on the "songs" bucket.

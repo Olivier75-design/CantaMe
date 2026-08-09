@@ -101,6 +101,8 @@
       "abuelo": "Grandfather",
       "hermana": "Sister",
       "hermano": "Brother",
+      "tia": "Aunt",
+      "tio": "Uncle",
       "otro": "Other"
     },
     "anecdote1": "A special memory or anecdote",
@@ -126,10 +128,7 @@
     "voices": {
       "female": "Female Voice",
       "male": "Male Voice",
-      "duo": "Female + Male",
-      "femaleKids": "Female + Kids",
-      "maleKids": "Male + Kids",
-      "all": "Everyone (F + M + Kids)"
+      "duo": "Female + Male"
     },
     "voiceHint": "Kids only sing backing on the chorus — the lead voice is always the one you pick.",
     "generatePreview": "Generate My Song ✨",
@@ -407,6 +406,13 @@
     "terms": "Terms of Service",
     "contact": "Contact",
     "rights": "All rights reserved."
+  },
+  "rating": {
+    "question": "How is this song?",
+    "good": "Love it",
+    "bad": "Not great",
+    "thanks": "Thanks — this helps us write better songs.",
+    "failed": "Could not save your rating. Please try again."
   },
   "contact": {
     "open": "Contact us",

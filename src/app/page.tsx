@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { OCCASIONS, MUSIC_STYLES, OCCASION_STYLE_MAP, CREDITS, GALLERY_SAMPLES, VOICE_ICONS } from '@/lib/constants';
+import SongRating from '@/components/SongRating';
 import { authHeaders } from '@/lib/authClient';
 import AudioPlayer from '@/components/AudioPlayer';
 import { TEMPLATES } from '@/lib/templates';
@@ -790,6 +791,15 @@ export default function HomeDashboardPage() {
                           {t('preview.downloadHint')}
                         </p>
                       )}
+                      <div className="mt-lg">
+                        <SongRating
+                          audioUrl={generatedAudioUrl}
+                          style={selectedStyle}
+                          tone={form.tone}
+                          voiceGender={form.voiceGender}
+                          occasion={selectedOccasion}
+                        />
+                      </div>
                     </>
                   )}
 

@@ -6,6 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { authHeaders } from '@/lib/authClient';
 import AudioPlayer from '@/components/AudioPlayer';
+import SongRating from '@/components/SongRating';
 
 interface OrderData {
   recipientName: string;
@@ -17,6 +18,7 @@ interface OrderData {
   songLanguage: string;
   occasion: string;
   style: string;
+  voiceGender: string;
 }
 
 export default function PreviewPage() {
@@ -244,6 +246,15 @@ export default function PreviewPage() {
                     {t('preview.downloadHint')}
                   </p>
                 )}
+                <div className="mt-lg">
+                  <SongRating
+                    audioUrl={audioUrl}
+                    style={orderData?.style}
+                    tone={orderData?.tone}
+                    voiceGender={orderData?.voiceGender}
+                    occasion={orderData?.occasion}
+                  />
+                </div>
               </>
             )}
             <p className="body-md mt-lg" style={{ fontStyle: 'italic', color: 'var(--accent-primary)' }}>

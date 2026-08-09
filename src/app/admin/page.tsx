@@ -60,6 +60,26 @@ interface StudioResult {
   lyrics: string;
 }
 
+interface Breakdown {
+  name: string;
+  up: number;
+  down: number;
+  total: number;
+  score: number;
+}
+
+interface RatingStats {
+  total: number;
+  up: number;
+  down: number;
+  score: number;
+  byStyle: Breakdown[];
+  byVoice: Breakdown[];
+  byTone: Breakdown[];
+  byOccasion: Breakdown[];
+  error?: string;
+}
+
 interface ContactMessage {
   id: string;
   name: string;
@@ -122,7 +142,7 @@ export default function AdminPage() {
   const router = useRouter();
   const isAdmin = isAdminEmail(user?.email);
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'styles' | 'traffic' | 'studio' | 'users' | 'messages'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'styles' | 'traffic' | 'studio' | 'users' | 'messages' | 'quality'>('orders');
 
   // Traffic (server-side, ad-blocker-proof analytics)
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -191,6 +211,10 @@ export default function AdminPage() {
   const [messageFilter, setMessageFilter] = useState('all');
   const [loadingMessages, setLoadingMessages] = useState(true);
 
+  // Song quality (thumbs up/down left by customers)
+  const [ratings, setRatings] = useState<RatingStats | null>(null);
+  const [loadingRatings, setLoadingRatings] = useState(true);
+
   const fetchOrders = useCallback(async () => {
     try {
       const res = await fetch('/api/orders', { headers: await authHeaders() });
@@ -237,12 +261,23 @@ export default function AdminPage() {
     setLoadingMessages(false);
   }, [authHeaders, messageFilter]);
 
+  const fetchRatings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/ratings', { headers: await authHeaders() });
+      setRatings(await res.json());
+    } catch {
+      setRatings(null);
+    }
+    setLoadingRatings(false);
+  }, [authHeaders]);
+
   useEffect(() => {
     if (!isAdmin) return;
     fetchOrders();
     fetchStyles();
     fetchAnalytics();
-  }, [isAdmin, fetchOrders, fetchStyles, fetchAnalytics]);
+    fetchRatings();
+  }, [isAdmin, fetchOrders, fetchStyles, fetchAnalytics, fetchRatings]);
 
   // Separate effect: refetches when the status filter changes, and keeps the
   // unread badge current without re-running the other three fetches.
@@ -510,6 +545,15 @@ export default function AdminPage() {
                 onClick={() => setActiveTab('users')}
               >
                 👤 {isEn ? 'Users' : 'Usuarios'}
+              </button>
+              <button
+                className={activeTab === 'quality' ? 'active' : ''}
+                onClick={() => setActiveTab('quality')}
+              >
+                ⭐ {isEn ? 'Quality' : 'Calidad'}
+                {ratings && ratings.total > 0 && (
+                  <span style={{ marginLeft: 6, fontSize: '0.75rem', opacity: 0.7 }}>{ratings.score}%</span>
+                )}
               </button>
               <button
                 className={activeTab === 'messages' ? 'active' : ''}
@@ -1007,9 +1051,6 @@ export default function AdminPage() {
                         <option value="female">{isEn ? 'Female' : 'Femenina'}</option>
                         <option value="male">{isEn ? 'Male' : 'Masculina'}</option>
                         <option value="duo">{isEn ? 'Female + Male' : 'Femenina + Masculina'}</option>
-                        <option value="femaleKids">{isEn ? 'Female + Kids' : 'Femenina + Niños'}</option>
-                        <option value="maleKids">{isEn ? 'Male + Kids' : 'Masculina + Niños'}</option>
-                        <option value="all">{isEn ? 'Everyone (F + M + Kids)' : 'Todos (F + M + Niños)'}</option>
                       </select>
                     </div>
                     <div className="input-group">
@@ -1145,7 +1186,89 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* TAB 6: CONTACT MESSAGES */}
+          {/* TAB 6: SONG QUALITY (customer thumbs up/down) */}
+          {activeTab === 'quality' && (
+            <div className="animate-fade-in">
+              <h2 className="heading-md mb-lg">⭐ {isEn ? 'Song quality' : 'Calidad de las canciones'}</h2>
+
+              {loadingRatings ? (
+                <div className="text-center"><div className="spinner-lg" style={{ margin: '2rem auto' }} /></div>
+              ) : !ratings || ratings.total === 0 ? (
+                <div className="text-center" style={{ padding: 'var(--space-2xl)' }}>
+                  <p className="body-md" style={{ color: 'var(--text-muted)' }}>
+                    {ratings?.error === 'no_table'
+                      ? (isEn ? 'Run the song_ratings section of supabase-setup.sql to start collecting.' : 'Ejecuta la seccion song_ratings de supabase-setup.sql para empezar a recoger datos.')
+                      : (isEn ? 'No ratings yet. They appear as soon as customers rate a song.' : 'Aun no hay valoraciones. Apareceran en cuanto los clientes valoren una cancion.')}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid-3 mb-xl">
+                    <div className="card" style={{ background: 'var(--gradient-card)' }}>
+                      <div className="body-sm mb-sm">{isEn ? 'Satisfaction' : 'Satisfaccion'}</div>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 800, color: ratings.score >= 70 ? '#2CB67D' : ratings.score >= 50 ? '#FF8906' : '#F25F4C' }}>
+                        {ratings.score}%
+                      </div>
+                    </div>
+                    <div className="card">
+                      <div className="body-sm mb-sm">👍 {isEn ? 'Loved it' : 'Les encanto'}</div>
+                      <div style={{ fontSize: '2rem', fontWeight: 700 }}>{ratings.up}</div>
+                    </div>
+                    <div className="card">
+                      <div className="body-sm mb-sm">👎 {isEn ? 'Not great' : 'No les convencio'}</div>
+                      <div style={{ fontSize: '2rem', fontWeight: 700 }}>{ratings.down}</div>
+                    </div>
+                  </div>
+
+                  {ratings.total < 20 && (
+                    <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)' }}>
+                      ⚠️ {isEn
+                        ? `Only ${ratings.total} rating(s) so far — too few to draw conclusions from. Treat the breakdowns below as hints, not verdicts, until you pass ~20.`
+                        : `Solo ${ratings.total} valoracion(es) por ahora — muy pocas para sacar conclusiones. Toma los desgloses de abajo como pistas, no como veredictos, hasta pasar de ~20.`}
+                    </p>
+                  )}
+
+                  <div className="grid-2" style={{ gap: 'var(--space-lg)' }}>
+                    {([
+                      [isEn ? 'By style' : 'Por estilo', ratings.byStyle],
+                      [isEn ? 'By voice' : 'Por voz', ratings.byVoice],
+                      [isEn ? 'By tone' : 'Por tono', ratings.byTone],
+                      [isEn ? 'By occasion' : 'Por ocasion', ratings.byOccasion],
+                    ] as [string, Breakdown[]][]).map(([label, rows]) => (
+                      <div key={label} className="card">
+                        <h3 className="heading-sm mb-md">{label}</h3>
+                        {rows.length === 0 ? (
+                          <p className="body-sm" style={{ color: 'var(--text-muted)' }}>—</p>
+                        ) : (
+                          <div className="flex flex-col gap-sm">
+                            {rows.map((r) => (
+                              <div key={r.name}>
+                                <div className="flex justify-between" style={{ fontSize: '0.85rem', marginBottom: 4 }}>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{r.name}</span>
+                                  <span style={{ fontWeight: 700 }}>
+                                    {r.score}% <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({r.total})</span>
+                                  </span>
+                                </div>
+                                <div style={{ height: 6, background: 'var(--bg-glass)', borderRadius: 999, overflow: 'hidden' }}>
+                                  <div style={{
+                                    width: `${r.score}%`,
+                                    height: '100%',
+                                    background: r.score >= 70 ? '#2CB67D' : r.score >= 50 ? '#FF8906' : '#F25F4C',
+                                  }} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* TAB 7: CONTACT MESSAGES */}
           {activeTab === 'messages' && (
             <div className="animate-fade-in">
               <div className="flex items-center justify-between mb-lg" style={{ flexWrap: 'wrap', gap: 'var(--space-md)' }}>

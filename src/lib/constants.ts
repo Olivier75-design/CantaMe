@@ -2,13 +2,18 @@
 
 // Icon per voice line-up. Keys must match `form.voices` in the locale files and
 // VOICE_HINT in lib/musicPrompts.ts.
+// Vocal line-ups offered to the customer. The kids'-choir options (femaleKids,
+// maleKids, all) were removed: backing a chorus with a children's choir forces
+// 4-6 word lines and heavy repetition, which flattened the hook into
+// "Happy birthday, Lucia!" four times over. Old orders may still carry those
+// values — VOICE_HINT falls back to `female`, which is intentional.
+// These keys must stay in sync with VOICE_HINT/VOICE_LYRIC_HINT (musicPrompts),
+// form.voices in BOTH locale files, and the Studio picker in /admin.
+// scripts/check-prompts.mjs enforces it.
 export const VOICE_ICONS: Record<string, string> = {
   female: '👩',
   male: '👨',
   duo: '👫',
-  femaleKids: '👩‍👧',
-  maleKids: '👨‍👦',
-  all: '👨‍👩‍👧',
 };
 
 export interface Occasion {

@@ -57,7 +57,11 @@ Core is `src/lib/generateSong.ts` — `generateSongFile(input)`:
 - `buildLyricsMessages(brief, language, revisionNotes?)` — bilingual, revision-aware, and written as hit-songwriter craft rules (concrete imagery over stated emotion, one repeated hook carrying the name, banned clichés, fixed `[verse][chorus][verse][chorus][bridge][chorus]` structure).
 - `fitLyricsToWindow()` in `generateSong.ts` caps lyrics at `LYRICS_MAX_CHARS` (1500), cutting at a **section boundary** — MiniMax silently truncates over-long lyrics mid-phrase, which sounds broken.
 
-**Voice line-ups** — six keys (`female`, `male`, `duo`, `femaleKids`, `maleKids`, `all`) that must stay in sync across **three** places: `VOICE_HINT` (musicPrompts), `VOICE_ICONS` (constants), and `form.voices` in **both** locale files. A kids' choir is always *accompaniment*: loud and up front on the chorus, never leading, verses are lead-only.
+**Voice line-ups** — three keys (`female`, `male`, `duo`) that must stay in sync across **four** places: `VOICE_HINT` + `VOICE_LYRIC_HINT_*` (musicPrompts), `VOICE_ICONS` (constants), `form.voices` in **both** locale files, and the **Studio picker in `/admin`** (hardcoded `<option>`s). `npm run check:prompts` enforces the sync — run it after touching any of them.
+
+The kids'-choir options (`femaleKids`, `maleKids`, `all`) were **removed**. Two reasons, both learned the hard way: (1) `all` glued a "verses = lead voice alone" clause onto a duet line-up, so the prompt contradicted itself and MiniMax collapsed it to a single singer — the customer picked "Everyone" and heard one voice; (2) the choir rule forced 4-6 word chorus lines and heavy repetition, flattening every hook into "Happy birthday, <name>!" four times. Old orders may still carry those values; `VOICE_HINT` falls back to `female`, which is intentional.
+
+⚠️ **Music prompts must stay ≲300 chars** and must not contradict themselves — MiniMax dilutes long prompts and drops what comes last. `scripts/check-prompts.mjs` checks every voice × style × tone combination for both.
 
 ### Credits (the billing unit)
 `src/lib/credits.ts`. Balances are stored in **Supabase Auth `app_metadata.credits`** (server-controlled — a user can't edit their own app_metadata; only the service_role key can), so there's no separate table. Internally billed in credits: **1 song = 20, 1 revision = 10** (`CREDITS` in `lib/constants.ts`); new accounts get **20 free (= 1 song)** auto-initialized on first read. Customers see everything in *songs*, not credits.
@@ -91,7 +95,7 @@ Listening is free for everyone; **downloading requires an account**. `GET /api/s
 `src/lib/rateLimit.ts` — `rateLimit(id, max, windowSec)` using Upstash Redis sliding window (shared across serverless instances) with an in-memory per-instance fallback. `clientIp(request)` reads `x-forwarded-for`. Applied on public/paid routes (e.g. generate-song by IP, payments/create by user id).
 
 ### Data layer & DB
-`src/lib/db.ts` — Supabase Postgres. Tables: `orders`, `revisions`, `music_styles`, `payments`, `page_views`, `contact_messages`. Columns are snake_case; `mapOrder`/`mapStyle`/`mapRevision` attach camelCase aliases so callers can read either (`audio_url` **or** `audioUrl`). `src/lib/supabase.ts`: `getSupabaseBrowser()` (anon, RLS applies) vs `getSupabaseServer()` (service_role, bypasses RLS) — both created lazily inside functions so importing them needs no env vars at build time.
+`src/lib/db.ts` — Supabase Postgres. Tables: `orders`, `revisions`, `music_styles`, `payments`, `page_views`, `contact_messages`, `song_ratings`. Columns are snake_case; `mapOrder`/`mapStyle`/`mapRevision` attach camelCase aliases so callers can read either (`audio_url` **or** `audioUrl`). `src/lib/supabase.ts`: `getSupabaseBrowser()` (anon, RLS applies) vs `getSupabaseServer()` (service_role, bypasses RLS) — both created lazily inside functions so importing them needs no env vars at build time.
 
 **`supabase-setup.sql`** (run once in the Supabase SQL Editor) is the source of truth for the schema: creates the public `songs` bucket, adds `orders.lyrics`, the `payments` table (+ promo/amount/influencer columns), and `page_views`. RLS approach: setting `SUPABASE_SERVICE_ROLE_KEY` bypasses RLS, so only the public-bucket section is strictly required; the storage/RLS policy sections are only needed if you run on the anon key.
 
@@ -103,6 +107,13 @@ One global stylesheet `src/app/globals.css` with CSS custom properties in `:root
 
 ### Analytics
 `page_views` is a server-side, ad-blocker-proof counter populated by `src/middleware.ts` (visible in Admin → Traffic). Vercel Analytics always runs; GA4 loads only when `NEXT_PUBLIC_GA_ID` is set (`components/GoogleAnalytics.tsx`).
+
+### Song ratings (the quality feedback loop)
+`src/lib/ratings.ts` + `components/SongRating.tsx` (👍/👎) + `POST /api/ratings` (public, IP-limited 20/60s) → **Admin → Quality**.
+
+The point is that prompt changes used to ship with **no way to tell whether they made songs better**. Every vote snapshots the settings that produced the song (style, tone, voice, occasion, language), so "which styles actually land" is a query rather than a guess — `getRatingStats()` returns the overall score plus a breakdown per dimension, sorted by volume (a 100% score off one vote is noise). The admin surfaces a warning below ~20 ratings for the same reason.
+
+Rated from three places: the home wizard after generation, `/create/preview`, and the dashboard player. Guests may rate — they generate songs too, and excluding them would discard most of the signal. Upserts on `audio_url` so re-rating updates the row instead of stacking duplicate votes. `song_ratings` is RLS-on/no-policies like `contact_messages`. Accepts only `audio_url`s from our own songs bucket, otherwise the table becomes a free-text dump and the stats stop meaning anything.
 
 ### Contact form
 There is **no real mailbox** — `hello@cantame.app` never existed and was removed. Visitors write through a modal (`components/ContactModal.tsx`), mounted by `Footer` (which is in the root layout, so it is reachable everywhere). Anything can open it by calling the exported `openContactModal()`, which dispatches a `cantame:contact` window event — that's how `/privacy` and `/terms` reuse the one form without duplicating it.

@@ -9,6 +9,7 @@ import { getSupabaseBrowser } from '@/lib/supabase';
 import { authHeaders } from '@/lib/authClient';
 import { validatePromo, discounted } from '@/lib/promoClient';
 import { MUSIC_STYLES, OCCASIONS, CREDITS } from '@/lib/constants';
+import SongRating from '@/components/SongRating';
 
 interface Order {
   id: string;
@@ -608,6 +609,19 @@ export default function DashboardPage() {
                             <Link href={`/order/${nowPlaying.id}/share`} className="btn btn-outline btn-sm">🔗 {t('dashboard.share')}</Link>
                             {audioOf(nowPlaying) && <a href={`/api/orders/${nowPlaying.id}/download`} className="btn btn-primary btn-sm">⬇ {t('dashboard.download')}</a>}
                           </div>
+                          {audioOf(nowPlaying) && (
+                            <div style={{ marginTop: 'var(--space-md)' }}>
+                              {/* keyed by song: switching tracks resets the widget
+                                  instead of showing the previous song's thank-you */}
+                              <SongRating
+                                key={nowPlaying.id}
+                                audioUrl={audioOf(nowPlaying)}
+                                orderId={nowPlaying.id}
+                                style={nowPlaying.style}
+                                occasion={nowPlaying.occasion}
+                              />
+                            </div>
+                          )}
                         </>
                       ) : (
                         <div className="np-empty">🎧 {t('dashboard.pickASong')}</div>
