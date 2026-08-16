@@ -8,5 +8,7 @@ export const runtime = 'nodejs';
 export const revalidate = 300;
 
 export async function GET() {
-  return NextResponse.json({ songs: await listFeaturedSongs(3) });
+  // Returns everything featured; the landing page shows 3 and reveals the rest
+  // behind "See more", so expanding costs no extra round trip.
+  return NextResponse.json({ songs: await listFeaturedSongs(24) });
 }

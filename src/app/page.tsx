@@ -109,6 +109,7 @@ export default function HomeDashboardPage() {
   // Landing showcase: songs the admin picked from the ones customers rated 👍.
   // Falls back to the bundled samples until at least one has been featured.
   const [featured, setFeatured] = useState<{ id: string; audioUrl: string | null; style: string | null; occasion: string | null }[]>([]);
+  const [showAllFeatured, setShowAllFeatured] = useState(false);
   useEffect(() => {
     fetch('/api/featured-songs')
       .then((r) => r.json())
@@ -421,7 +422,7 @@ export default function HomeDashboardPage() {
           </p>
 
             <div className="samples-grid">
-              {featured.map((f) => {
+              {(showAllFeatured ? featured : featured.slice(0, 3)).map((f) => {
                 const fs = MUSIC_STYLES.find((s) => s.id === f.style);
                 const fo = OCCASIONS.find((o) => o.id === f.occasion);
                 // No recipient name and no lyrics on purpose: these are real
@@ -440,6 +441,17 @@ export default function HomeDashboardPage() {
                 );
               })}
             </div>
+
+          {/* Only worth offering once there is actually a 4th song to reveal. */}
+          {featured.length > 3 && (
+            <div className="text-center" style={{ marginTop: 'var(--space-lg)' }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowAllFeatured((v) => !v)}>
+                {showAllFeatured
+                  ? (isEn ? 'Show less' : 'Ver menos')
+                  : (isEn ? `See more (${featured.length - 3})` : `Ver más (${featured.length - 3})`)}
+              </button>
+            </div>
+          )}
         </div>
       </section>
       )}
