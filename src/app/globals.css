@@ -91,10 +91,12 @@ html {
      10px is 62.5% of that, so the site renders about a third smaller
      everywhere without touching a single component.
 
-     To go further, lower this number. Do not go below ~9px: body copy is 1rem,
-     so 8px would put the smallest text under the readable floor — and a lot of
-     these songs are bought by and for older relatives. */
-  font-size: 10px;
+     10px turned out to be too far: --max-width and the radii are in px, so the
+     container stayed 1200px wide while type and spacing shrank ~37%. That left
+     small text stranded in a wide shell with ~150-character lines — the reason
+     the page read as cheap rather than compact. 13px keeps the site clearly
+     smaller than the 16px default while restoring the proportion. */
+  font-size: 13px;
   scroll-behavior: smooth;
   /* Stops iOS Safari inflating text in landscape, which broke the rem scale. */
   -webkit-text-size-adjust: 100%;
@@ -2193,4 +2195,53 @@ svg {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ── Readable measure ──────────────────────────────────────────────────────
+   The container is 1200px, which is right for a grid of cards but far too wide
+   for prose: a paragraph spanning it runs past 120 characters, and the eye
+   loses the line. Body copy gets its own cap; 65ch is the readable band. */
+.hero-subtitle,
+.section-sub,
+.body-md {
+  max-width: 65ch;
+}
+
+.hero-inner .hero-subtitle,
+.text-center .body-md,
+.text-center .section-sub {
+  margin-inline: auto;
+}
+
+/* ── Depth ─────────────────────────────────────────────────────────────────
+   Cards sat flat with a single soft shadow and no response to the cursor. A
+   small lift on hover is what makes a grid feel built rather than pasted. */
+.card {
+  transition: transform var(--transition-base), box-shadow var(--transition-base),
+    background var(--transition-base), border-color var(--transition-base);
+}
+
+.sample-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(37, 99, 235, 0.28);
+}
+
+/* Keep the lift honest for people who asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .sample-card:hover {
+    transform: none;
+  }
+}
+
+/* ── Section rhythm ────────────────────────────────────────────────────────
+   An eyebrow that sits tight under the heading above it reads as belonging to
+   the wrong block. Give each section a consistent, generous run-in. */
+.section-eyebrow {
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--accent-primary);
+  margin-bottom: 0.35rem;
 }
