@@ -49,6 +49,9 @@ export interface Order {
   audio_url?: string;
   instrumental_url?: string;
   lyrics?: string;
+  // Paywall: false until the customer spends credits on this song. Column
+  // default is false, so a freshly generated song always starts locked.
+  unlocked?: boolean;
   created_at: string;
   updated_at: string;
   revisions: Revision[];

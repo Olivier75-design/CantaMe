@@ -82,13 +82,19 @@ export const OCCASION_STYLE_MAP: Record<string, string[]> = {
 //   On signup: granted freeOnSignup credits (= 1 more song) and can download
 //   After    : buy a pack below
 export const CREDITS = {
-  freeOnSignup: 20, // = 1 free song, granted to a brand-new account
-  perSong: 20, // credits consumed to generate a song
+  // Nothing is free any more. Generating is open to any signed-in account, but
+  // the song stays LOCKED until credits are spent to unlock it — credits buy
+  // access to a finished song, they are no longer consumed by generation.
+  freeOnSignup: 0,
+  perSong: 20, // credits consumed to UNLOCK a song (listen + download)
   perRevision: 10, // credits consumed per revision
+  // Entry tier is 2 songs for $4.99 ($2.50/song). The two larger packs keep the
+  // same discount curve the old pricing used — 100% / 80% / 60% of the entry
+  // unit price — so $2.50 → $2.00 → $1.50 per song.
   packs: [
-    { id: 'pack_1',  songs: 1,  credits: 20,  price: 4.99 },                    // 1 song
-    { id: 'pack_3',  songs: 3,  credits: 60,  price: 11.99, save: 3 },          // 3 songs (save ~$3)
-    { id: 'pack_10', songs: 10, credits: 200, price: 29.99, save: 20, best: true }, // 10 songs (save ~$20)
+    { id: 'pack_2',  songs: 2,  credits: 40,  price: 4.99 },                     // $2.50/song
+    { id: 'pack_6',  songs: 6,  credits: 120, price: 11.99, save: 3 },           // $2.00/song, saves ~$3
+    { id: 'pack_20', songs: 20, credits: 400, price: 29.99, save: 20, best: true }, // $1.50/song, saves ~$20
   ]
 } as const;
 

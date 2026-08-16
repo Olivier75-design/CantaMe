@@ -77,6 +77,16 @@ export default function HomeDashboardPage() {
 
   // Real generation result
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
+
+  // Landing showcase: songs the admin picked from the ones customers rated 👍.
+  // Falls back to the bundled samples until at least one has been featured.
+  const [featured, setFeatured] = useState<{ id: string; audioUrl: string | null; style: string | null; occasion: string | null }[]>([]);
+  useEffect(() => {
+    fetch('/api/featured-songs')
+      .then((r) => r.json())
+      .then((d) => setFeatured(Array.isArray(d.songs) ? d.songs : []))
+      .catch(() => setFeatured([]));
+  }, []);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   // Editable lyrics step (generated before the music is composed)
@@ -360,11 +370,42 @@ export default function HomeDashboardPage() {
         <div className="container">
           <div className="flex items-center justify-between mb-lg" style={{ flexWrap: 'wrap', gap: 8 }}>
             <div>
-              <div className="section-eyebrow">{t('landing.samplesEyebrow')}</div>
+              <div className="section-eyebrow">
+                {featured.length > 0 ? t('loved.eyebrow') : t('landing.samplesEyebrow')}
+              </div>
               <h2 className="heading-md">{t('landing.samplesTitle')}</h2>
             </div>
             <Link href="/gallery" className="link-btn">{t('landing.seeAll')} →</Link>
           </div>
+
+          {featured.length > 0 && (
+            <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)', maxWidth: '52ch' }}>
+              {t('loved.note')}
+            </p>
+          )}
+
+          {featured.length > 0 ? (
+            <div className="samples-grid">
+              {featured.map((f) => {
+                const fs = MUSIC_STYLES.find((s) => s.id === f.style);
+                const fo = OCCASIONS.find((o) => o.id === f.occasion);
+                // No recipient name and no lyrics on purpose: these are real
+                // songs about real people, identified by style/occasion only.
+                const label = fo ? t(fo.nameKey) : (fs ? t(fs.nameKey) : 'CantaMe');
+                return (
+                  <div className="card sample-card" key={f.id}>
+                    <div className="sample-head">
+                      {fo && <span className="chip chip-primary">{t(fo.nameKey)}</span>}
+                      {fs && <span className="chip">{t(fs.nameKey)}</span>}
+                    </div>
+                    <div className="sample-title">{label}</div>
+                    <div className="body-sm mb-md">👍 {t('loved.eyebrow')}</div>
+                    <AudioPlayer src={f.audioUrl || undefined} variant="mini" title={label} />
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
           <div className="samples-grid">
             {GALLERY_SAMPLES.slice(0, 3).map((g) => {
               const gs = MUSIC_STYLES.find((s) => s.id === g.style);
@@ -382,6 +423,7 @@ export default function HomeDashboardPage() {
               );
             })}
           </div>
+          )}
         </div>
       </section>
 

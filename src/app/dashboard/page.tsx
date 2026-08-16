@@ -666,7 +666,7 @@ export default function DashboardPage() {
                               >
                                 <strong style={{ fontSize: '1.05rem' }}>{p.songs}</strong>
                                 <span style={{ fontSize: '0.62rem', opacity: 0.85, textTransform: 'lowercase' }}>
-                                  {p.songs === 1 ? t('credits.song') : t('credits.songs')}
+                                  {(p.songs as number) === 1 ? t('credits.song') : t('credits.songs')}
                                 </span>
                                 <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>${p.price}</span>
                               </button>

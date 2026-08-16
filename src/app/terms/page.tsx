@@ -27,7 +27,7 @@ export default function TermsPage() {
         },
         {
           h: '4. Credits & payments',
-          p: 'The service works with credits. New accounts receive free credits; creating a song and requesting a revision each consume credits. Additional credits can be purchased in packs. Credits have no cash value and are non-transferable.',
+          p: 'The service works with credits, bought in packs. Creating an account and generating a song are free; credits are what unlock a finished song so you can listen to it and download it, and a revision also consumes credits. Credits have no cash value and are non-transferable.',
         },
         {
           h: '5. Refunds',
@@ -69,7 +69,7 @@ export default function TermsPage() {
         },
         {
           h: '4. Créditos y pagos',
-          p: 'El servicio funciona con créditos. Las cuentas nuevas reciben créditos gratis; crear una canción y pedir una revisión consumen créditos. Puedes comprar créditos adicionales en paquetes. Los créditos no tienen valor en efectivo y no son transferibles.',
+          p: 'El servicio funciona con créditos, que se compran en paquetes. Crear una cuenta y generar una canción son gratis; los créditos son lo que desbloquea una canción terminada para poder escucharla y descargarla, y una revisión también consume créditos. Los créditos no tienen valor en efectivo y no son transferibles.',
         },
         {
           h: '5. Reembolsos',

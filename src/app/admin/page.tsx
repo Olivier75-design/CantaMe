@@ -68,7 +68,17 @@ interface Breakdown {
   score: number;
 }
 
+interface LovedSong {
+  id: string;
+  audioUrl: string | null;
+  style: string | null;
+  occasion: string | null;
+  featured: boolean;
+  createdAt: string;
+}
+
 interface RatingStats {
+  loved?: LovedSong[];
   total: number;
   up: number;
   down: number;
@@ -1190,6 +1200,50 @@ export default function AdminPage() {
           {activeTab === 'quality' && (
             <div className="animate-fade-in">
               <h2 className="heading-md mb-lg">⭐ {isEn ? 'Song quality' : 'Calidad de las canciones'}</h2>
+
+              {/* Curate the public landing-page showcase. A customer liking
+                  their song is NOT permission to publish it — these contain
+                  real names and memories — so featuring is an explicit choice. */}
+              {ratings?.loved && ratings.loved.length > 0 && (
+                <div className="card mb-xl">
+                  <h3 className="heading-sm mb-sm">
+                    👍 {isEn ? 'Loved songs — pick what shows on the landing page' : 'Canciones que gustaron — elige cuales salen en la portada'}
+                  </h3>
+                  <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)' }}>
+                    {isEn
+                      ? 'Featured songs are the only ones served publicly; everything else stays behind the paywall. The showcase shows style and occasion only — never the recipient name or the lyrics.'
+                      : 'Las destacadas son las unicas que se sirven publicamente; el resto queda tras el muro de pago. La portada muestra solo estilo y ocasion — nunca el nombre ni la letra.'}
+                  </p>
+                  <div className="flex flex-col gap-sm">
+                    {ratings.loved.map((s) => (
+                      <div key={s.id} className="flex items-center justify-between" style={{ gap: 'var(--space-md)', flexWrap: 'wrap', borderBottom: '1px solid var(--border-color)', paddingBottom: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <span className="body-sm">{s.occasion || '—'} · {s.style || '—'}</span>{' '}
+                          <span className="body-sm" style={{ color: 'var(--text-muted)' }}>
+                            {new Date(s.createdAt).toLocaleDateString(isEn ? 'en-US' : 'es-ES')}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-sm">
+                          {s.audioUrl && <audio controls preload="none" src={s.audioUrl} style={{ height: 32, maxWidth: 220 }} />}
+                          <button
+                            className={`btn btn-sm ${s.featured ? 'btn-primary' : 'btn-ghost'}`}
+                            onClick={async () => {
+                              await fetch(`/api/admin/ratings/${s.id}`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+                                body: JSON.stringify({ featured: !s.featured }),
+                              });
+                              fetchRatings();
+                            }}
+                          >
+                            {s.featured ? (isEn ? '★ Featured' : '★ Destacada') : (isEn ? '☆ Feature' : '☆ Destacar')}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {loadingRatings ? (
                 <div className="text-center"><div className="spinner-lg" style={{ margin: '2rem auto' }} /></div>

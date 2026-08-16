@@ -407,6 +407,10 @@
     "contact": "Contact",
     "rights": "All rights reserved."
   },
+  "loved": {
+    "eyebrow": "Loved by their owners",
+    "note": "Real songs already made on CantaMe — these are the ones the people who ordered them rated 👍."
+  },
   "rating": {
     "question": "How is this song?",
     "good": "Love it",

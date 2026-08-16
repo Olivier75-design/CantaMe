@@ -407,6 +407,10 @@
     "contact": "Contacto",
     "rights": "Todos los derechos reservados."
   },
+  "loved": {
+    "eyebrow": "Aprobadas por sus dueños",
+    "note": "Canciones reales ya creadas en CantaMe — estas son las que las personas que las pidieron valoraron con 👍."
+  },
   "rating": {
     "question": "¿Qué te parece esta canción?",
     "good": "Me encanta",

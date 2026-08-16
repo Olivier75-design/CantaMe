@@ -107,6 +107,26 @@ create index if not exists song_ratings_style_idx on public.song_ratings (style)
 alter table public.song_ratings enable row level security;
 
 
+-- 1g) Paywall: a generated song is LOCKED until the customer spends credits on
+--     it. Generation is free for any signed-in account; credits buy access.
+--
+--     Added with default TRUE so every song that already exists stays playable
+--     for the customer who made it under the old model, then flipped to FALSE
+--     so new songs start locked. Written this way on purpose: it is idempotent,
+--     so re-running this file never re-locks or re-unlocks anything.
+alter table public.orders add column if not exists unlocked boolean not null default true;
+alter table public.orders alter column unlocked set default false;
+
+
+-- 1h) Landing-page showcase: songs the ADMIN picked out of the ones customers
+--     rated 👍. Featuring is deliberately a separate flag from the thumbs up —
+--     a customer liking their song is not permission to publish it, so the
+--     admin curates. Featured songs are the only audio served publicly; every
+--     other song stays behind the paywall.
+alter table public.song_ratings add column if not exists featured boolean not null default false;
+create index if not exists song_ratings_featured_idx on public.song_ratings (featured) where featured;
+
+
 -- ── Everything below is ONLY needed if you do NOT set the service_role key ──
 
 -- 2) Storage policies: allow read/insert/update on the "songs" bucket.

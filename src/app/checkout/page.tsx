@@ -247,7 +247,10 @@ export default function CheckoutPage() {
                       >
                         <span style={{ fontSize: '1.35rem', fontWeight: 900, fontFamily: 'var(--font-display)' }}>{p.songs}</span>
                         <span style={{ fontSize: '0.75rem', opacity: 0.85, textTransform: 'lowercase' }}>
-                          {p.songs === 1 ? t('credits.song') : t('credits.songs')}
+                          {/* widened: CREDITS is `as const`, so p.songs is a
+                              literal union and comparing it to 1 would be a
+                              type error while no 1-song pack exists */}
+                          {(p.songs as number) === 1 ? t('credits.song') : t('credits.songs')}
                         </span>
                         <span style={{ fontSize: '0.9rem', fontWeight: 700 }}>${p.price}</span>
                         {'save' in p && p.save ? (

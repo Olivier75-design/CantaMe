@@ -111,6 +111,71 @@ function groupBy(rows: Row[], key: keyof Row): Breakdown[] {
     .sort((a, b) => b.total - a.total);
 }
 
+export interface LovedSong {
+  id: string;
+  audioUrl: string | null;
+  style: string | null;
+  occasion: string | null;
+  featured: boolean;
+  createdAt: string;
+}
+
+// Songs customers gave a 👍 — the pool the admin curates the landing page from.
+export async function listLovedSongs(limit = 60): Promise<LovedSong[]> {
+  const { data, error } = await getSupabaseServer()
+    .from('song_ratings')
+    .select('id, audio_url, style, occasion, featured, created_at')
+    .eq('rating', 'up')
+    .not('audio_url', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) return [];
+  return (data || []).map((r) => ({
+    id: r.id as string,
+    audioUrl: r.audio_url as string | null,
+    style: r.style as string | null,
+    occasion: r.occasion as string | null,
+    featured: !!r.featured,
+    createdAt: r.created_at as string,
+  }));
+}
+
+// What the public landing page shows. Deliberately returns NO recipient name and
+// NO lyrics: these are real songs about real people, so the showcase identifies
+// them by style and occasion only.
+export async function listFeaturedSongs(limit = 3): Promise<Omit<LovedSong, 'featured'>[]> {
+  const { data, error } = await getSupabaseServer()
+    .from('song_ratings')
+    .select('id, audio_url, style, occasion, created_at')
+    .eq('featured', true)
+    .eq('rating', 'up')
+    .not('audio_url', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) return [];
+  return (data || []).map((r) => ({
+    id: r.id as string,
+    audioUrl: r.audio_url as string | null,
+    style: r.style as string | null,
+    occasion: r.occasion as string | null,
+    createdAt: r.created_at as string,
+  }));
+}
+
+export async function setFeatured(id: string, featured: boolean): Promise<boolean> {
+  const { error } = await getSupabaseServer()
+    .from('song_ratings')
+    .update({ featured })
+    .eq('id', id);
+  if (error) {
+    console.error('Error setting featured:', error.message);
+    return false;
+  }
+  return true;
+}
+
 export async function getRatingStats(): Promise<RatingStats> {
   const { data, error } = await getSupabaseServer()
     .from('song_ratings')
