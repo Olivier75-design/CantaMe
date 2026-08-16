@@ -96,6 +96,8 @@ html {
      these songs are bought by and for older relatives. */
   font-size: 10px;
   scroll-behavior: smooth;
+  /* Stops iOS Safari inflating text in landscape, which broke the rem scale. */
+  -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -2052,7 +2054,14 @@ select.input-field option {
 .wizard-progress-track { flex: 1; height: 6px; background: var(--bg-glass); border-radius: 999px; overflow: hidden; }
 .wizard-progress-fill { height: 100%; background: var(--gradient-warm); border-radius: 999px; transition: width 0.4s ease; }
 .wizard-progress-label { font-size: 0.82rem; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
-.samples-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-md); }
+/* auto-fit rather than a fixed 3 columns: the grid reflows to 3 / 2 / 1 by
+   itself as the viewport narrows, instead of snapping straight from 3 to 1 at
+   820px and being cramped for everything in between. */
+.samples-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-md);
+}
 .sample-head { display: flex; gap: 6px; margin-bottom: 6px; }
 .sample-title { font-family: var(--font-display); font-weight: 800; font-size: 1rem; }
 
@@ -2109,5 +2118,79 @@ select.input-field option {
   }
   100% {
     transform: translateY(0px) rotate(0deg);
+  }
+}
+
+/* ── Keyboard accessibility ────────────────────────────────────────────────
+   There was no focus styling anywhere, so anyone navigating by keyboard had no
+   idea where they were — the single worst accessibility gap in the app.
+   :focus-visible only shows the ring for keyboard users, so mouse clicks stay
+   visually clean. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 6px);
+}
+
+/* Interactive elements should say so. */
+button:not(:disabled),
+[role='button']:not(:disabled),
+label[for],
+summary {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ── Responsive guards ─────────────────────────────────────────────────────
+   The grid/flex "blowout" this codebase has hit before: a long word or a wide
+   child forces the whole page to scroll sideways on a phone. */
+body {
+  overflow-x: hidden;
+}
+
+img,
+video,
+audio,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Long recipient names and pasted lyrics must wrap, not push the layout. */
+.sample-title,
+.letra-text,
+.np-title {
+  overflow-wrap: anywhere;
+}
+
+/* Tap targets: 44×44 is the documented minimum, and several of the small
+   buttons sat well under it on a phone. */
+@media (max-width: 48rem) {
+  .btn,
+  .btn-sm,
+  .np-btn {
+    min-height: 2.75rem;
+  }
+  .btn-sm {
+    padding-inline: var(--space-md);
+  }
+}
+
+/* ── Motion ────────────────────────────────────────────────────────────────
+   Respect the OS setting. Vestibular disorders make large motion genuinely
+   unpleasant, and this page floats and animates a lot. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
