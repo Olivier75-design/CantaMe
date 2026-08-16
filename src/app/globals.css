@@ -85,6 +85,16 @@
 }
 
 html {
+  /* ── SITE SCALE — the one knob that resizes everything ──────────────────
+     Almost every size in this file is in rem, so this single value scales the
+     whole design: type, spacing, cards, buttons. Browsers default to 16px;
+     10px is 62.5% of that, so the site renders about a third smaller
+     everywhere without touching a single component.
+
+     To go further, lower this number. Do not go below ~9px: body copy is 1rem,
+     so 8px would put the smallest text under the readable floor — and a lot of
+     these songs are bought by and for older relatives. */
+  font-size: 10px;
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
