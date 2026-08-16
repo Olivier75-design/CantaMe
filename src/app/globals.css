@@ -1298,8 +1298,11 @@ select.input-field option {
 .hero-title {
   font-family: var(--font-display);
   font-weight: 900;
-  font-size: clamp(2.6rem, 8vw, 5.4rem);
-  line-height: 1.03;
+  /* Was clamp(2.6rem, 8vw, 5.4rem) — 86px on a wide screen, which filled the
+     whole viewport with the title alone and pushed everything else below the
+     fold. */
+  font-size: clamp(2rem, 5.2vw, 3.5rem);
+  line-height: 1.06;
   letter-spacing: -0.03em;
   color: var(--text-primary);
   margin-bottom: var(--space-lg);
@@ -1313,7 +1316,7 @@ select.input-field option {
 }
 
 .hero-subtitle {
-  font-size: clamp(1.05rem, 2.2vw, 1.35rem);
+  font-size: clamp(0.95rem, 1.5vw, 1.1rem);
   line-height: 1.6;
   color: var(--text-secondary);
   max-width: 640px;
