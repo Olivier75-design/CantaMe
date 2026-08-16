@@ -35,7 +35,7 @@
     "subtitle": "CantaMe convierte tu historia en una canción personalizada y original para las personas que amas — cumpleaños, bodas, aniversarios y cada momento que quieres guardar para siempre. Letra y música creadas a tu medida con IA.",
     "cta": "Crear mi canción →",
     "heroPlaceholder": "Mi mamá se llama Rosa, tiene 60 años y me crió sola...",
-    "heroNote": "Sin tarjeta. Primera canción gratis.",
+    "heroNote": "Crea tu cuenta y compón en minutos.",
     "samplesEyebrow": "Escucha la diferencia",
     "samplesTitle": "Canciones reales, de personas reales",
     "seeAll": "Ver todos los ejemplos",
@@ -44,9 +44,21 @@
     "testimonialsAccent": "la diferencia",
     "testimonialsSubtitle": "Descubre cómo transformaron sus eventos con una canción única.",
     "testimonials": [
-      { "quote": "Creé una canción para la entrada de los novios en la boda de mi hermana. Todos lloraron de emoción. ¡Fue mágico!", "author": "Sara K.", "tag": "Boda" },
-      { "quote": "Para los 50 años de mi papá hicimos una salsa contando su historia. El mejor regalo de la fiesta.", "author": "Moisés D.", "tag": "Cumpleaños" },
-      { "quote": "Usé CantaMe para felicitar a mi hijo por su graduación. No podía creer que fuera una canción única para él.", "author": "Aisha T.", "tag": "Graduación" }
+      {
+        "quote": "Creé una canción para la entrada de los novios en la boda de mi hermana. Todos lloraron de emoción. ¡Fue mágico!",
+        "author": "Sara K.",
+        "tag": "Boda"
+      },
+      {
+        "quote": "Para los 50 años de mi papá hicimos una salsa contando su historia. El mejor regalo de la fiesta.",
+        "author": "Moisés D.",
+        "tag": "Cumpleaños"
+      },
+      {
+        "quote": "Usé CantaMe para felicitar a mi hijo por su graduación. No podía creer que fuera una canción única para él.",
+        "author": "Aisha T.",
+        "tag": "Graduación"
+      }
     ]
   },
   "occasions": {
@@ -130,7 +142,7 @@
       "male": "Voz Masculina",
       "duo": "Femenina + Masculina"
     },
-    "voiceHint": "Los niños solo hacen coros en el estribillo — la voz principal es siempre la que elijas.",
+    "voiceHint": "Elige quién canta la voz principal — una voz, o un dúo femenino y masculino alternando estrofas.",
     "generatePreview": "Generar Mi Canción ✨",
     "generating": "Creando tu canción..."
   },
@@ -140,11 +152,11 @@
     "cta": "Imagina la cara de {name} cuando la escuche...",
     "download": "Descargar MP3",
     "downloadSignIn": "Entra para descargar",
-    "downloadHint": "Escuchar es gratis — entra para descargar tu canción.",
-    "freeBadge": "2ª canción gratis",
+    "downloadHint": "Desbloquea tu canción para escucharla completa y descargarla.",
+    "freeBadge": "Desbloquear",
     "guestTitle": "Guárdala en tu cuenta",
-    "guestBody": "Crea una cuenta gratis para conservar esta canción en tu biblioteca — y consigue una 2ª canción gratis.",
-    "guestCta": "Entrar y conseguir una 2ª gratis",
+    "guestBody": "Desbloquea esta canción para escucharla completa, descargarla y guardarla en tu biblioteca.",
+    "guestCta": "Desbloquear mi canción",
     "saveCta": "Guardar en mis canciones",
     "another": "Crear otra canción"
   },
@@ -158,9 +170,9 @@
     "featDownload": "Descarga en MP3",
     "featShare": "Enlace para compartir",
     "getMySong": "Conseguir mi canción",
-    "firstFree": "Tu 1ª canción es gratis — sin cuenta. Entra para conseguir una 2ª gratis.",
-    "signinForSecond": "Entra para crear tu 2ª canción gratis",
-    "outOfSongs": "Ya usaste tus canciones gratis. Compra un pack para seguir creando.",
+    "firstFree": "Crear es gratis — solo pagas para desbloquear la canción que te llevas.",
+    "signinForSecond": "Desbloquear mi canción",
+    "outOfSongs": "Te quedaste sin créditos. Compra un pack para desbloquear esta canción.",
     "song": "canción",
     "songs": "canciones",
     "promoLabel": "¿Tienes un código?",

@@ -35,7 +35,7 @@
     "subtitle": "CantaMe turns your story into a personalized, original song for the people you love — birthdays, weddings, anniversaries and every moment you want to keep forever. Lyrics and music crafted just for you with AI.",
     "cta": "Create my song →",
     "heroPlaceholder": "My mom's name is Rosa, she's 60 and raised me on her own...",
-    "heroNote": "No card required. First song free.",
+    "heroNote": "Create your account and compose in minutes.",
     "samplesEyebrow": "Hear the difference",
     "samplesTitle": "Real songs, from real people",
     "seeAll": "See all examples",
@@ -44,9 +44,21 @@
     "testimonialsAccent": "unforgettable",
     "testimonialsSubtitle": "See how they turned their events into a one-of-a-kind song.",
     "testimonials": [
-      { "quote": "I created a song for the couple's entrance at my sister's wedding. Everyone cried. It was magical!", "author": "Sarah K.", "tag": "Wedding" },
-      { "quote": "For my dad's 50th we made a salsa telling his story. Best gift of the night.", "author": "Moses D.", "tag": "Birthday" },
-      { "quote": "I used CantaMe to congratulate my son on his graduation. He couldn't believe it was a unique song for him.", "author": "Aisha T.", "tag": "Graduation" }
+      {
+        "quote": "I created a song for the couple's entrance at my sister's wedding. Everyone cried. It was magical!",
+        "author": "Sarah K.",
+        "tag": "Wedding"
+      },
+      {
+        "quote": "For my dad's 50th we made a salsa telling his story. Best gift of the night.",
+        "author": "Moses D.",
+        "tag": "Birthday"
+      },
+      {
+        "quote": "I used CantaMe to congratulate my son on his graduation. He couldn't believe it was a unique song for him.",
+        "author": "Aisha T.",
+        "tag": "Graduation"
+      }
     ]
   },
   "occasions": {
@@ -130,7 +142,7 @@
       "male": "Male Voice",
       "duo": "Female + Male"
     },
-    "voiceHint": "Kids only sing backing on the chorus — the lead voice is always the one you pick.",
+    "voiceHint": "Pick who sings the lead — one voice, or a female and male duo trading verses.",
     "generatePreview": "Generate My Song ✨",
     "generating": "Creating your song..."
   },
@@ -140,11 +152,11 @@
     "cta": "Imagine {name}'s face when they hear it...",
     "download": "Download MP3",
     "downloadSignIn": "Sign in to download",
-    "downloadHint": "Listening is free — sign in to download your song.",
-    "freeBadge": "2nd song free",
+    "downloadHint": "Unlock your song to listen to it in full and download it.",
+    "freeBadge": "Unlock",
     "guestTitle": "Save it to your account",
-    "guestBody": "Create a free account to keep this song in your library — and get a 2nd song free.",
-    "guestCta": "Sign in & get a 2nd free song",
+    "guestBody": "Unlock this song to listen to it in full, download it and keep it in your library.",
+    "guestCta": "Unlock my song",
     "saveCta": "Save to my songs",
     "another": "Create another song"
   },
@@ -158,9 +170,9 @@
     "featDownload": "MP3 download",
     "featShare": "Custom share link",
     "getMySong": "Get my song",
-    "firstFree": "Your 1st song is free — no account needed. Sign in for a 2nd free song.",
-    "signinForSecond": "Sign in to create your 2nd free song",
-    "outOfSongs": "You've used your free songs. Buy a pack to keep creating.",
+    "firstFree": "Creating is free — you only pay to unlock the song you keep.",
+    "signinForSecond": "Unlock my song",
+    "outOfSongs": "You are out of credits. Buy a pack to unlock this song.",
     "song": "song",
     "songs": "songs",
     "promoLabel": "Have a code?",

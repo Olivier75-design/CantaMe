@@ -17,6 +17,7 @@ interface Order {
   recipient_name?: string;
   style: string;
   occasion: string;
+  unlocked?: boolean;
   tier: string;
   status: string;
   price: number;
@@ -286,7 +287,15 @@ export default function DashboardPage() {
   }, []);
 
   // ── Field helpers ──
-  const audioOf = (o: Order) => o.audioUrl || o.audio_url;
+  // A locked song has no playable audio for the customer: the API strips the
+  // URL until credits have been spent on it.
+  const audioOf = (o: Order) => (o.unlocked === false ? undefined : (o.audioUrl || o.audio_url));
+
+  const unlockOrder = async (id: string) => {
+    const res = await fetch(`/api/orders/${id}/unlock`, { method: 'POST', headers: await authHeaders() });
+    if (res.status === 402) { router.push('/checkout'); return; } // out of credits
+    if (res.ok) refetchOrders();
+  };
   const nameOf = (o: Order) => o.recipientName || o.recipient_name || '—';
   const dateRaw = (o: Order) => o.createdAt || o.created_at || '';
   const dateOf = (o: Order) =>
@@ -606,6 +615,11 @@ export default function DashboardPage() {
                             <button className="np-btn" onClick={() => { const i = filtered.findIndex((x) => x.id === nowPlaying.id); if (i >= 0 && i < filtered.length - 1) playSong(filtered[i + 1]); }} aria-label="Next">⏭</button>
                           </div>
                           <div className="np-actions">
+                            {nowPlaying.unlocked === false && (
+                              <button className="btn btn-primary btn-sm" onClick={() => unlockOrder(nowPlaying.id)}>
+                                🔓 {t('credits.useOneCredit')}
+                              </button>
+                            )}
                             <Link href={`/order/${nowPlaying.id}/share`} className="btn btn-outline btn-sm">🔗 {t('dashboard.share')}</Link>
                             {audioOf(nowPlaying) && <a href={`/api/orders/${nowPlaying.id}/download`} className="btn btn-primary btn-sm">⬇ {t('dashboard.download')}</a>}
                           </div>

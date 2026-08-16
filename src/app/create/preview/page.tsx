@@ -31,6 +31,8 @@ export default function PreviewPage() {
   const [isGenerating, setIsGenerating] = useState(true);
   const [generatingStep, setGeneratingStep] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
   const [lyrics, setLyrics] = useState('');
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
@@ -58,14 +60,16 @@ export default function PreviewPage() {
       });
       const data = await res.json();
 
-      // Signed in but out of credits -> buy a pack. (Guests are never blocked
-      // here: they can generate and listen, and sign in only to download.)
-      if (res.status === 402) {
-        router.push('/checkout');
+      // Creating requires an account now — the route 401s without one.
+      if (res.status === 401) {
+        router.push('/signin?mode=signup&next=/create');
         return;
       }
       if (!res.ok) throw new Error(data?.error || 'Error');
-      setAudioUrl(data.audioUrl);
+
+      // Comes back LOCKED: an order id and the lyrics, never the audio URL.
+      // Credits are spent to unlock it, not to generate it.
+      setOrderId(data.orderId);
       setLyrics(data.lyrics || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : (isEn ? 'Generation failed' : 'La generación falló'));
@@ -74,6 +78,31 @@ export default function PreviewPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEn]);
+
+  // Spend credits to unlock the finished song. The audio URL only comes back
+  // here, after payment — before that the client never holds it.
+  const handleUnlock = async () => {
+    if (!orderId) return;
+    setUnlocking(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/unlock`, {
+        method: 'POST',
+        headers: await authHeaders(),
+      });
+      const data = await res.json();
+      if (res.status === 402) {
+        router.push('/checkout'); // out of credits -> buy a pack
+        return;
+      }
+      if (!res.ok) throw new Error(data?.error || 'Error');
+      setAudioUrl(data.audioUrl);
+    } catch {
+      setError(isEn ? 'Could not unlock the song.' : 'No se pudo desbloquear la canción.');
+    } finally {
+      setUnlocking(false);
+    }
+  };
 
   // On mount: load the brief and kick off generation (once). No brief -> restart.
   useEffect(() => {
@@ -236,6 +265,25 @@ export default function PreviewPage() {
               title={`${orderData?.style || 'Bachata'} · ${recipientName}`}
               showVisualizer
             />
+            {orderId && !audioUrl && (
+              <div className="card mt-lg" style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '2.5rem' }}>🔒</div>
+                <h4 className="heading-sm" style={{ marginTop: 'var(--space-sm)' }}>
+                  {isEn ? 'Your song is ready' : 'Tu canción está lista'}
+                </h4>
+                <p className="body-sm" style={{ color: 'var(--text-muted)', marginTop: 'var(--space-sm)' }}>
+                  {isEn
+                    ? 'Unlock it to listen to it in full and download it.'
+                    : 'Desbloquéala para escucharla completa y descargarla.'}
+                </p>
+                <button className="btn btn-primary mt-lg" onClick={handleUnlock} disabled={unlocking}>
+                  {unlocking
+                    ? (isEn ? 'Unlocking…' : 'Desbloqueando…')
+                    : (isEn ? '🔓 Unlock my song' : '🔓 Desbloquear mi canción')}
+                </button>
+              </div>
+            )}
+
             {audioUrl && (
               <>
                 <button className="btn btn-outline mt-lg" onClick={handleDownload}>
