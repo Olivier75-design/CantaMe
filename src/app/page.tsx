@@ -78,6 +78,34 @@ export default function HomeDashboardPage() {
   // Real generation result
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
 
+  // Set once the song exists but is still locked; cleared into
+  // generatedAudioUrl once credits have been spent to unlock it.
+  const [generatedOrderId, setGeneratedOrderId] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+
+  const handleUnlock = async () => {
+    if (!generatedOrderId) return;
+    setUnlocking(true);
+    setGenerateError(null);
+    try {
+      const res = await fetch(`/api/orders/${generatedOrderId}/unlock`, {
+        method: 'POST',
+        headers: await authHeaders(),
+      });
+      const data = await res.json();
+      if (res.status === 402) {
+        router.push('/checkout'); // not enough credits -> buy a pack
+        return;
+      }
+      if (!res.ok) throw new Error(data?.error || 'Error');
+      setGeneratedAudioUrl(data.audioUrl);
+    } catch {
+      setGenerateError(isEn ? 'Could not unlock the song.' : 'No se pudo desbloquear la canción.');
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
   // Landing showcase: songs the admin picked from the ones customers rated 👍.
   // Falls back to the bundled samples until at least one has been featured.
   const [featured, setFeatured] = useState<{ id: string; audioUrl: string | null; style: string | null; occasion: string | null }[]>([]);
@@ -152,7 +180,16 @@ export default function HomeDashboardPage() {
     updateField('message', text);
   };
 
-  const scrollToStudio = () => document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
+  // Creating a song requires an account: the lyrics and generation routes both
+  // 401 without one, so send people to sign up before they fill in a brief they
+  // would only lose.
+  const scrollToStudio = () => {
+    if (!user) {
+      router.push('/signin?mode=signup&next=/create');
+      return;
+    }
+    document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   // Hero "describe the person" input -> seed the story + jump to the wizard.
   const handleHeroCreate = () => {
@@ -210,15 +247,16 @@ export default function HomeDashboardPage() {
       });
       const data = await res.json();
 
-      // Signed in but out of credits -> buy a pack. (Guests are never blocked
-      // here: they can generate and listen, and sign in only to download.)
-      if (res.status === 402) {
-        sessionStorage.setItem('ct-order', JSON.stringify({ ...briefBody(), lyrics, title: lyricsTitle }));
-        router.push('/checkout');
+      // Creating requires an account now — the route 401s without one.
+      if (res.status === 401) {
+        router.push('/signin?mode=signup&next=/create');
         return;
       }
       if (!res.ok) throw new Error(data?.error || 'Error');
-      setGeneratedAudioUrl(data.audioUrl);
+
+      // The song comes back LOCKED and without its audio URL. Credits are spent
+      // to unlock it, not to generate it.
+      setGeneratedOrderId(data.orderId);
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : (t('hero.stats') === 'songs created' ? 'Generation failed' : 'La generación falló'));
     } finally {
@@ -366,25 +404,22 @@ export default function HomeDashboardPage() {
       </section>
 
       {/* ===== SAMPLES: real songs ===== */}
+      {/* Real customer songs, picked by the admin out of the ones people rated
+          👍. Hidden until at least one has been featured. */}
+      {featured.length > 0 && (
       <section className="section landing-samples">
         <div className="container">
           <div className="flex items-center justify-between mb-lg" style={{ flexWrap: 'wrap', gap: 8 }}>
             <div>
-              <div className="section-eyebrow">
-                {featured.length > 0 ? t('loved.eyebrow') : t('landing.samplesEyebrow')}
-              </div>
+              <div className="section-eyebrow">{t('loved.eyebrow')}</div>
               <h2 className="heading-md">{t('landing.samplesTitle')}</h2>
             </div>
-            <Link href="/gallery" className="link-btn">{t('landing.seeAll')} →</Link>
           </div>
 
-          {featured.length > 0 && (
-            <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)', maxWidth: '52ch' }}>
-              {t('loved.note')}
-            </p>
-          )}
+          <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)', maxWidth: '52ch' }}>
+            {t('loved.note')}
+          </p>
 
-          {featured.length > 0 ? (
             <div className="samples-grid">
               {featured.map((f) => {
                 const fs = MUSIC_STYLES.find((s) => s.id === f.style);
@@ -405,7 +440,20 @@ export default function HomeDashboardPage() {
                 );
               })}
             </div>
-          ) : (
+        </div>
+      </section>
+      )}
+
+      {/* The curated gallery stays permanently, underneath the real songs. */}
+      <section className="section landing-samples">
+        <div className="container">
+          <div className="flex items-center justify-between mb-lg" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <div className="section-eyebrow">{t('landing.samplesEyebrow')}</div>
+              <h2 className="heading-md">{t('nav.gallery')}</h2>
+            </div>
+            <Link href="/gallery" className="link-btn">{t('landing.seeAll')} →</Link>
+          </div>
           <div className="samples-grid">
             {GALLERY_SAMPLES.slice(0, 3).map((g) => {
               const gs = MUSIC_STYLES.find((s) => s.id === g.style);
@@ -423,7 +471,6 @@ export default function HomeDashboardPage() {
               );
             })}
           </div>
-          )}
         </div>
       </section>
 
@@ -822,6 +869,30 @@ export default function HomeDashboardPage() {
                     title={`${(isEn ? musicStyles.find((s) => s.id === selectedStyle)?.nameEn : musicStyles.find((s) => s.id === selectedStyle)?.nameEs) || selectedStyle} · ${recipientName}`}
                     showVisualizer
                   />
+
+                  {/* Song composed but not paid for: no player, no audio URL. */}
+                  {generatedOrderId && !generatedAudioUrl && (
+                    <div className="card mt-lg" style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '2.5rem' }}>🔒</div>
+                      <h4 className="heading-sm" style={{ marginTop: 'var(--space-sm)' }}>
+                        {isEn ? 'Your song is ready' : 'Tu canción está lista'}
+                      </h4>
+                      <p className="body-sm" style={{ color: 'var(--text-muted)', marginTop: 'var(--space-sm)' }}>
+                        {isEn
+                          ? 'Unlock it to listen to it in full and download it.'
+                          : 'Desbloquéala para escucharla completa y descargarla.'}
+                      </p>
+                      <button
+                        className="btn btn-primary mt-lg"
+                        onClick={handleUnlock}
+                        disabled={unlocking}
+                      >
+                        {unlocking
+                          ? (isEn ? 'Unlocking…' : 'Desbloqueando…')
+                          : (isEn ? '🔓 Unlock my song' : '🔓 Desbloquear mi canción')}
+                      </button>
+                    </div>
+                  )}
 
                   {generatedAudioUrl && (
                     <>

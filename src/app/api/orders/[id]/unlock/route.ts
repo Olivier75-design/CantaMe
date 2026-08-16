@@ -21,8 +21,15 @@ export async function POST(
 
   // Already paid for — unlocking is idempotent, and a double click must never
   // charge twice.
+  // The audio URL is only ever handed out AFTER payment. Before that the client
+  // never sees it (the bucket is public, so the URL is the song). Afterwards it
+  // is exactly what the customer bought, and a plain <audio> can play it —
+  // which the authenticated /stream route cannot do, since the browser sends
+  // cookies there, not the Supabase bearer token.
+  const audioUrl = access.order.audio_url || access.order.audioUrl || null;
+
   if (access.order.unlocked) {
-    return NextResponse.json({ ok: true, alreadyUnlocked: true });
+    return NextResponse.json({ ok: true, alreadyUnlocked: true, audioUrl });
   }
 
   const spend = await spendCredits(access.userId, CREDITS.perSong);
@@ -47,5 +54,5 @@ export async function POST(
     return NextResponse.json({ error: 'unlock_failed' }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, credits: spend.credits });
+  return NextResponse.json({ ok: true, credits: spend.credits, audioUrl });
 }

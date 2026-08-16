@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeLyrics, LYRICS_PROVIDER } from '@/lib/lyrics';
 import type { SongBrief } from '@/lib/musicPrompts';
 import { rateLimit, clientIp } from '@/lib/rateLimit';
+import { getUserFromRequest } from '@/lib/admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,6 +13,12 @@ export const maxDuration = 60;
 // the paid OpenAI/MiniMax API.
 export async function POST(request: NextRequest) {
   try {
+    // Writing lyrics costs OpenAI money, and it is the first step of the
+    // creation flow — which now requires an account, same as generating.
+    if (!(await getUserFromRequest(request))) {
+      return NextResponse.json({ error: 'auth_required' }, { status: 401 });
+    }
+
     if (!(await rateLimit(`lyrics:${clientIp(request)}`, 12, 60))) {
       return NextResponse.json({ error: 'Too many requests. Please slow down.' }, { status: 429 });
     }

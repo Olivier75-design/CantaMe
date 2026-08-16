@@ -1,14 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import { OCCASIONS, MUSIC_STYLES, OCCASION_STYLE_MAP } from '@/lib/constants';
 import AudioPlayer from '@/components/AudioPlayer';
 
 export default function CreatePage() {
   const { t } = useLanguage();
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+
+  // Creating a song now requires an account — the lyrics and generation routes
+  // both 401 without one, so send people to sign in before they fill anything
+  // in rather than after.
+  useEffect(() => {
+    if (!authLoading && !user) router.replace('/signin?mode=signup&next=/create');
+  }, [authLoading, user, router]);
+
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedOccasion, setSelectedOccasion] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
