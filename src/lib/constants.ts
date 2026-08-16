@@ -88,13 +88,13 @@ export const CREDITS = {
   freeOnSignup: 0,
   perSong: 20, // credits consumed to UNLOCK a song (listen + download)
   perRevision: 10, // credits consumed per revision
-  // Entry tier is 2 songs for $4.99 ($2.50/song). The two larger packs keep the
-  // same discount curve the old pricing used — 100% / 80% / 60% of the entry
-  // unit price — so $2.50 → $2.00 → $1.50 per song.
+  // Round price points ($4 / $11 / $29), per Olivier. Entry is 2 songs for $4
+  // ($2.00/song); the larger packs keep the discount curve the old pricing
+  // used — 100% / 80% / 60% of the entry unit price — which sets the counts.
   packs: [
-    { id: 'pack_2',  songs: 2,  credits: 40,  price: 4.99 },                     // $2.50/song
-    { id: 'pack_6',  songs: 6,  credits: 120, price: 11.99, save: 3 },           // $2.00/song, saves ~$3
-    { id: 'pack_20', songs: 20, credits: 400, price: 29.99, save: 20, best: true }, // $1.50/song, saves ~$20
+    { id: 'pack_2',  songs: 2,  credits: 40,  price: 4 },                      // $2.00/song
+    { id: 'pack_7',  songs: 7,  credits: 140, price: 11, save: 3 },            // $1.57/song, saves $3
+    { id: 'pack_24', songs: 24, credits: 480, price: 29, save: 19, best: true }, // $1.21/song, saves $19
   ]
 } as const;
 
