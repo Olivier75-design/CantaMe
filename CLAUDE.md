@@ -18,9 +18,10 @@ npm run dev      # dev server (Next 16 + Turbopack). Wants :3000, but several po
 npm run build    # production build — ALSO runs full TypeScript type-check (use this to validate types)
 npm run lint     # eslint
 npm run start    # serve the production build
+npm run check:prompts  # the only automated test: asserts the MiniMax prompt invariants
 ```
 
-There is no test framework configured. To validate a change, run `npm run build` (it type-checks) and exercise the flow in the running dev server. curl to external HTTPS is blocked on this machine (proxy/TLS) — to hit a local endpoint use PowerShell `Invoke-WebRequest -UseBasicParsing`, not curl.
+There is no test *framework*, but `check:prompts` is a real regression test and is cheap to run — it caught a shipped bug (see Voice line-ups). Otherwise validate with `npm run build` (it type-checks) and exercise the flow in the running dev server. curl to external HTTPS is blocked on this machine (proxy/TLS) — to hit a local endpoint use PowerShell `Invoke-WebRequest -UseBasicParsing`, not curl.
 
 The `cancion-tuya:verify` and `cancion-tuya:security-review` skills are the preferred pre-commit checks (build + i18n key parity + secret scan; security review).
 
@@ -46,9 +47,10 @@ Core is `src/lib/generateSong.ts` — `generateSongFile(input)`:
 2. **Music** via MiniMax `music-2.6` (`/v1/music_generation`) — returns **hex-encoded** mp3 (decoded to a Buffer).
 3. Audio uploaded to Supabase Storage bucket `songs` (must be **public** for playback); returns public URL + `{title, lyrics}`.
 
-**There is no preview.** `POST /api/generate-song` composes the **real, full-length (~2 min) song the customer keeps** — so it is the *metered* action, not checkout:
-- **Guest (not signed in)**: may generate and listen, is **not charged** and **not blocked**; only the IP rate limit applies (5/60s).
-- **Signed in**: `spendCredits(perSong)` runs **before** generation and is **refunded** (`addCredits`) if generation throws.
+**There is no preview, and nothing is free.** `POST /api/generate-song` composes the **real, full-length (~2 min) song the customer keeps**. Since the paywall it is **not** the metered action:
+- **Not signed in → 401.** Guests cannot write lyrics or generate. `/api/generate-lyrics` 401s too (it costs OpenAI money and is step one of the same flow).
+- **Signed in**: generates **without spending credits**, persists the order server-side, and returns `{ orderId, title, lyrics, locked: true }` — **never `audioUrl`**. Credits are spent later, to unlock.
+- Generation is uncharged, so MiniMax is billed for abandons. Guarded by a per-account limit (10/hour) on top of the per-IP one (5/60s).
 
 `PUT /api/orders/[id]` with `action:'generate_full'` no longer regenerates: it **reuses the audio already on the order** (regenerating produced a different melody than the one the customer heard — that mismatch was a real bug). It only composes as a fallback when an order somehow has no audio. Revisions (`action:'request_revision'`) *do* regenerate on purpose and cost `perRevision`. All generation routes set `runtime='nodejs'` + `maxDuration=300` → requires a Vercel **Pro** plan (Hobby's 60s cap fails the build).
 
@@ -61,21 +63,30 @@ Core is `src/lib/generateSong.ts` — `generateSongFile(input)`:
 
 The kids'-choir options (`femaleKids`, `maleKids`, `all`) were **removed**. Two reasons, both learned the hard way: (1) `all` glued a "verses = lead voice alone" clause onto a duet line-up, so the prompt contradicted itself and MiniMax collapsed it to a single singer — the customer picked "Everyone" and heard one voice; (2) the choir rule forced 4-6 word chorus lines and heavy repetition, flattening every hook into "Happy birthday, <name>!" four times. Old orders may still carry those values; `VOICE_HINT` falls back to `female`, which is intentional.
 
-⚠️ **Music prompts must stay ≲300 chars** and must not contradict themselves — MiniMax dilutes long prompts and drops what comes last. `scripts/check-prompts.mjs` checks every voice × style × tone combination for both.
+A prompt that **contradicts itself** is as damaging as one that is too long, and neither is visible in review — only audible in the product. `check-prompts.mjs` covers every voice × style × tone combination for both.
 
 ### Credits (the billing unit)
-`src/lib/credits.ts`. Balances are stored in **Supabase Auth `app_metadata.credits`** (server-controlled — a user can't edit their own app_metadata; only the service_role key can), so there's no separate table. Internally billed in credits: **1 song = 20, 1 revision = 10** (`CREDITS` in `lib/constants.ts`); new accounts get **20 free (= 1 song)** auto-initialized on first read. Customers see everything in *songs*, not credits.
+`src/lib/credits.ts`. Balances are stored in **Supabase Auth `app_metadata.credits`** (server-controlled — a user can't edit their own app_metadata; only the service_role key can), so there's no separate table. Internally billed in credits: **1 song = 20, 1 revision = 10** (`CREDITS` in `lib/constants.ts`); `freeOnSignup` is **0** — new accounts get nothing. Customers see everything in *songs*, not credits.
 
-Credits are **granted** only by `creditForPayment()` after a verified payment — `GET /api/credits` (session-scoped) is read-only and there is intentionally **no POST** (a public "add credits" route would let anyone mint credits). They are **spent** in `/api/generate-song` (and on revisions), *not* at checkout.
+Credits are **granted** only by `creditForPayment()` after a verified payment — `GET /api/credits` (session-scoped) is read-only and there is intentionally **no POST** (a public "add credits" route would let anyone mint credits). They are **spent** by `POST /api/orders/[id]/unlock` to unlock a finished song (and on revisions), **not** by generation and not at checkout.
 
-⚠️ **Known incentive inversion**: guests generate unlimited free songs while signed-in users pay 20 credits each, so signing out is cheaper — and every guest generation costs real MiniMax money. Deliberate (acquisition first), but revisit before scaling spend.
+Packs (`CREDITS.packs`): **2 songs / $4, 7 / $11, 24 / $29** — round prices, and the counts follow a 100/80/60% discount curve on the entry unit price. Entry is $2.00/song against a MiniMax bill paid for every generation, converted or not: break-even at a 1-in-3 conversion is a generation cost under $0.66. Watch the invoice before discounting further.
 
-### Downloading (the sign-in gate)
-Listening is free for everyone; **downloading requires an account**. `GET /api/songs/download?url=&name=` serves songs that have no order row yet (the wizard's button) and:
+### The paywall (listening AND downloading)
+A generated song is **locked** until credits are spent on it. `orders.unlocked` is the flag; `POST /api/orders/[id]/unlock` spends `CREDITS.perSong`, is idempotent, and **refunds** if the write fails.
+
+**`src/lib/orderAccess.ts` is the single gate** — `requireOwnedOrder()` / `requireUnlockedOrder()`. Every route that can emit song bytes goes through it, so there is one place to get this right instead of four.
+
+⚠️ **The songs bucket is public, so the URL *is* the song.** The client must never receive `audio_url` for a locked order — that alone would make the paywall decorative. It is handed over only by the unlock response, after payment. `GET /api/orders/[id]/stream` exists but a plain `<audio>` sends cookies, not the Supabase bearer token, so it cannot drive playback; post-unlock the public URL is what the player uses.
+
+`GET /api/orders/[id]/download` **now requires owner + unlocked** (it used to have no auth at all).
+
+`GET /api/songs/download?url=&name=` is the older by-URL path:
 - requires a valid Bearer token → **a plain `<a href>` cannot carry the Supabase JWT**, so the client must `fetch` with `authHeaders()` and hand the browser a blob (see `handleDownload` in `page.tsx` / `create/preview/page.tsx`);
 - only accepts URLs under our own `…/storage/v1/object/public/songs/` prefix, otherwise it would be an open proxy (SSRF).
 
-`GET /api/orders/[id]/download` (dashboard/share) is the order-based path and currently has **no auth check** — anyone with an order id can fetch the song. Pre-existing; left open because the share page depends on it.
+### Styling scale
+`html { font-size: 13px }` in `globals.css` is **the one knob that resizes the whole site** — nearly everything, including the `--space-*` scale, is in `rem`. Note `--max-width` and the radii are in **px** and do *not* follow: dropping the root to 10px once left small text stranded in a 1200px shell with ~150-character lines, which read as cheap. Prose is capped at `65ch` for the same reason.
 
 ### Payments (Moneroo — real, not mock)
 `src/lib/moneroo.ts` + routes under `src/app/api/payments/*`, `src/app/payments/callback`, `src/app/api/webhooks/moneroo`.
@@ -96,6 +107,8 @@ Listening is free for everyone; **downloading requires an account**. `GET /api/s
 
 ### Data layer & DB
 `src/lib/db.ts` — Supabase Postgres. Tables: `orders`, `revisions`, `music_styles`, `payments`, `page_views`, `contact_messages`, `song_ratings`. Columns are snake_case; `mapOrder`/`mapStyle`/`mapRevision` attach camelCase aliases so callers can read either (`audio_url` **or** `audioUrl`). `src/lib/supabase.ts`: `getSupabaseBrowser()` (anon, RLS applies) vs `getSupabaseServer()` (service_role, bypasses RLS) — both created lazily inside functions so importing them needs no env vars at build time.
+
+⚠️ **`supabase-setup.sql` is applied by hand, not by a migration tool.** Adding a table or column to that file does **nothing** until someone pastes it into the Supabase SQL Editor. A feature whose section has not been run fails at runtime, not at build: expect `save_failed`/500s, an empty admin tab, or `Could not find the table 'public.X' in the schema cache` in the server log. Check this before debugging anything data-related that "should work". The `orders.unlocked` block is written as `default true` then flipped to `default false` on purpose — that keeps it idempotent, so re-running the file never re-locks existing songs.
 
 **`supabase-setup.sql`** (run once in the Supabase SQL Editor) is the source of truth for the schema: creates the public `songs` bucket, adds `orders.lyrics`, the `payments` table (+ promo/amount/influencer columns), and `page_views`. RLS approach: setting `SUPABASE_SERVICE_ROLE_KEY` bypasses RLS, so only the public-bucket section is strictly required; the storage/RLS policy sections are only needed if you run on the anon key.
 
