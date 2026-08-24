@@ -6,8 +6,10 @@ import { AuthProvider } from "@/context/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
+import FacebookPixel from "@/components/FacebookPixel";
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
+const FB_PIXEL_ID = process.env.NEXT_PUBLIC_FB_PIXEL_ID || "3610079689141697";
 
 export const metadata: Metadata = {
   title: "CantaMe — Canciones Personalizadas en Estilos Latinos",
@@ -54,6 +56,7 @@ export default function RootLayout({
         </LanguageProvider>
         <Analytics />
         {GA_ID && <GoogleAnalytics gaId={GA_ID} />}
+        {FB_PIXEL_ID && <FacebookPixel pixelId={FB_PIXEL_ID} />}
       </body>
     </html>
   );
