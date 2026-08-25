@@ -129,6 +129,59 @@ create index if not exists song_ratings_featured_idx on public.song_ratings (fea
 
 -- ── Everything below is ONLY needed if you do NOT set the service_role key ──
 
+-- 1i) Streaming composition: the customer starts listening ~14s in, while
+--     MiniMax is still generating (the music API streams SSE chunks, and the
+--     concatenated status:1 chunks are byte-identical to the finished file).
+--     `song_chunks` is the hand-off buffer: the background generator writes to
+--     it, the player route reads from it. They are deliberately decoupled, so
+--     closing the browser does NOT cancel a generation the customer paid for.
+--     Rows are deleted as soon as the song is finalised — this table only ever
+--     holds songs currently being made.
+alter table public.orders add column if not exists compose_state        text not null default 'idle';
+alter table public.orders add column if not exists compose_started_at   timestamptz;
+alter table public.orders add column if not exists compose_heartbeat_at timestamptz;  -- last chunk received
+alter table public.orders add column if not exists compose_error        text;
+
+-- order_id's type is copied from public.orders.id rather than hardcoded, so this
+-- cannot fail with a uuid/text mismatch on a database that was created by hand.
+do $$
+declare
+  id_type text;
+begin
+  select format_type(a.atttypid, a.atttypmod) into id_type
+  from pg_attribute a
+  where a.attrelid = 'public.orders'::regclass
+    and a.attname  = 'id'
+    and a.attnum   > 0;
+
+  if id_type is null then
+    raise exception 'public.orders.id not found - run the rest of this file first';
+  end if;
+
+  execute format($f$
+    create table if not exists public.song_chunks (
+      order_id   %s          not null references public.orders(id) on delete cascade,
+      seq        int         not null,
+      bytes      bytea       not null,
+      created_at timestamptz not null default now(),
+      primary key (order_id, seq)
+    )
+  $f$, id_type);
+end
+$$;
+
+-- RLS on with NO policies -> service_role only, same as contact_messages.
+-- These bytes ARE the song, so a permissive policy here would hand the paywall
+-- away. Never "fix" a read problem by adding one; use a server route.
+alter table public.song_chunks enable row level security;
+
+-- Sweeper index: finds orders stuck in 'running' (a serverless function can die
+-- silently, and the customer has already been charged).
+create index if not exists orders_compose_running_idx
+  on public.orders (compose_heartbeat_at)
+  where compose_state = 'running';
+
+
 -- 2) Storage policies: allow read/insert/update on the "songs" bucket.
 drop policy if exists "songs_read"   on storage.objects;
 create policy "songs_read"   on storage.objects for select using (bucket_id = 'songs');
