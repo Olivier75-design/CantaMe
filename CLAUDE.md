@@ -21,6 +21,13 @@ npm run start    # serve the production build
 npm run check:prompts  # the only automated test: asserts the MiniMax prompt invariants
 ```
 
+**OneDrive locks `.next`, so `npm run build` fails with EPERM.** Kill node and delete `.next` first:
+
+```powershell
+Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force ".next" -ErrorAction SilentlyContinue
+```
+
 There is no test *framework*, but `check:prompts` is a real regression test and is cheap to run — it caught a shipped bug (see Voice line-ups). Otherwise validate with `npm run build` (it type-checks) and exercise the flow in the running dev server. curl to external HTTPS is blocked on this machine (proxy/TLS) — to hit a local endpoint use PowerShell `Invoke-WebRequest -UseBasicParsing`, not curl.
 
 The `cancion-tuya:verify` and `cancion-tuya:security-review` skills are the preferred pre-commit checks (build + i18n key parity + secret scan; security review).
@@ -36,6 +43,8 @@ In `.env.local` (gitignored; `.env.example` is the authoritative list). All must
 - `NEXT_PUBLIC_SITE_URL` — canonical origin for OAuth redirects (see `lib/site.ts`). No trailing slash.
 - `NEXT_PUBLIC_ADMIN_EMAILS` — comma-separated admin allowlist. **Fail closed**: empty = nobody is admin.
 - `NEXT_PUBLIC_GA_ID` — optional GA4 id.
+- `NEXT_PUBLIC_FB_PIXEL_ID` — Meta Pixel id. **`layout.tsx` hardcodes a fallback id**, so the Pixel loads even when the var is unset — unlike GA, there is no "absent key = no tracking" here.
+- `MONEROO_API_BASE` — optional override (defaults to `https://api.moneroo.io/v1`); not in `.env.example`.
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — client Supabase (RLS applies).
 - `SUPABASE_SERVICE_ROLE_KEY` — server only; **bypasses RLS** (new `sb_secret_...` format). `getSupabaseServer()` silently falls back to the anon key if this is missing/placeholder, which then fails Storage/admin operations.
 
@@ -119,7 +128,7 @@ A generated song is **locked** until credits are spent on it. `orders.unlocked` 
 One global stylesheet `src/app/globals.css` with CSS custom properties in `:root` (light + blue theme, `--accent-primary: #2563EB`). No Tailwind / CSS modules; shared utility-ish classes (`.container`, `.card`, `.btn`, `.heading-lg`, spacing vars like `var(--space-lg)`) plus inline styles. On grid/flex, add `min-width: 0` / `minmax(0, 1fr)` to children to avoid mobile horizontal "blowout".
 
 ### Analytics
-`page_views` is a server-side, ad-blocker-proof counter populated by `src/middleware.ts` (visible in Admin → Traffic). Vercel Analytics always runs; GA4 loads only when `NEXT_PUBLIC_GA_ID` is set (`components/GoogleAnalytics.tsx`).
+`page_views` is a server-side, ad-blocker-proof counter populated by `src/middleware.ts` (visible in Admin → Traffic). Vercel Analytics always runs; GA4 loads only when `NEXT_PUBLIC_GA_ID` is set (`components/GoogleAnalytics.tsx`). The **Meta Pixel** (`components/FacebookPixel.tsx`) also always runs — `layout.tsx` falls back to a hardcoded pixel id when `NEXT_PUBLIC_FB_PIXEL_ID` is unset. Both re-fire `PageView` on `usePathname()` change, because App Router navigations are not page loads.
 
 ### Song ratings (the quality feedback loop)
 `src/lib/ratings.ts` + `components/SongRating.tsx` (👍/👎) + `POST /api/ratings` (public, IP-limited 20/60s) → **Admin → Quality**.
