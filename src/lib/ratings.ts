@@ -141,6 +141,12 @@ export async function listLovedSongs(limit = 60): Promise<LovedSong[]> {
   }));
 }
 
+// The cached route the landing page reads. Lives here so the admin route that
+// flips `featured` and the route that serves the list cannot drift apart — a
+// typo in the path would silently stop invalidating, and the bug would come back
+// looking exactly like a deleted section.
+export const FEATURED_SONGS_PATH = '/api/featured-songs';
+
 // What the public landing page shows. Deliberately returns NO recipient name and
 // NO lyrics: these are real songs about real people, so the showcase identifies
 // them by style and occasion only.
