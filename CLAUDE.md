@@ -75,11 +75,13 @@ Packs (`CREDITS.packs`): **2 songs / $4, 7 / $11, 24 / $29** — round prices, a
 ### The paywall (listening AND downloading)
 A generated song is **locked** until credits are spent on it. `orders.unlocked` is the flag; `POST /api/orders/[id]/unlock` spends `CREDITS.perSong`, is idempotent, and **refunds** if the write fails.
 
-**`src/lib/orderAccess.ts` is the single gate** — `requireOwnedOrder()` / `requireUnlockedOrder()`. Every route that can emit song bytes goes through it, so there is one place to get this right instead of four.
+**`src/lib/orderAccess.ts` is the single gate** — `requireOwnedOrder()` / `requireUnlockedOrder()` / `requireShareableOrder()`, plus `hideLockedAudio()` / `publicOrderView()` for order JSON. Every route that can emit song bytes or an order goes through it, so there is one place to get this right instead of four.
 
-⚠️ **The songs bucket is public, so the URL *is* the song.** The client must never receive `audio_url` for a locked order — that alone would make the paywall decorative. It is handed over only by the unlock response, after payment. `GET /api/orders/[id]/stream` exists but a plain `<audio>` sends cookies, not the Supabase bearer token, so it cannot drive playback; post-unlock the public URL is what the player uses.
+⚠️ **The songs bucket is public, so the URL *is* the song.** The client must never receive `audio_url` for a locked order — that alone makes the paywall decorative, and the UI hiding it is not enough (devtools shows the JSON). Every order response passes through `hideLockedAudio()`: `GET /api/orders` (owner's list; admins get raw rows), `GET /api/orders/[id]` (`publicOrderView()`: also strips the buyer's email/message/ids — it is public because the share page uses it), and the `generate_full` reply. The audio is handed over by the unlock response, after payment. `GET /api/orders/[id]/stream` exists but a plain `<audio>` sends cookies, not the Supabase bearer token, so it cannot drive playback; post-unlock the public URL is what the player uses.
 
-`GET /api/orders/[id]/download` **now requires owner + unlocked** (it used to have no auth at all).
+`GET /api/orders/[id]/download` requires the order to be **unlocked, not owned** (`requireShareableOrder`). The share link already plays an unlocked song to anyone holding the order id, and every download button is a plain `<a href>` that cannot carry a Bearer token — requiring the owner made all five of them return 401. `request_revision` refuses a locked order (402 `locked`): it returns the new audio for half an unlock's price.
+
+The bucket must have **no storage policy at all** (`supabase-setup.sql` §2 drops them): public URLs work without one, while a `select` policy lets the anon key *list* every song — locked ones included — and an `insert` policy lets anyone upload files.
 
 `GET /api/songs/download?url=&name=` is the older by-URL path:
 - requires a valid Bearer token → **a plain `<a href>` cannot carry the Supabase JWT**, so the client must `fetch` with `authHeaders()` and hand the browser a blob (see `handleDownload` in `page.tsx` / `create/preview/page.tsx`);
@@ -92,7 +94,11 @@ A generated song is **locked** until credits are spent on it. `orders.unlocked` 
 `src/lib/moneroo.ts` + routes under `src/app/api/payments/*`, `src/app/payments/callback`, `src/app/api/webhooks/moneroo`.
 - `POST /api/payments/create` — resolves the pack **price + credits server-side from `packId`** (never trusts the client), applies a promo to the **price only**, calls Moneroo `initialize` for a hosted checkout, and records a **pending `payments` row**. Returns `checkoutUrl`.
 - Crediting is **idempotent**: `creditForPayment()` verifies with Moneroo, then atomically claims the row (`pending → completed`) so only the first caller grants credits. Fired by **both** the return callback and the webhook — never by the client redirect alone.
-- The webhook (`/api/webhooks/moneroo`) verifies `X-Moneroo-Signature` = HMAC-SHA256(rawBody, `MONEROO_WEBHOOK_SECRET`) with `timingSafeEqual`, and **fails closed** (503) if the secret is unset.
+- The webhook (`/api/webhooks/moneroo`) verifies `X-Moneroo-Signature` = HMAC-SHA256(rawBody, `MONEROO_WEBHOOK_SECRET`) with `timingSafeEqual`, and **fails closed** (503) if the secret is unset. Point it at `https://www.cantame.app/...` — the apex 307-redirects to www.
+- **Moneroo rejects the whole `initialize` (422) unless every `metadata` value is a string, boolean or integer.** A `null` (no promo code) or a decimal (a promo price like 6.6) broke *every* purchase from July to October 2026; `initializePayment()` now sanitizes metadata. The top-level `amount` may be decimal, in main units ($4 = `4`).
+- **Sandbox keys (`pvk_sandbox_…`) are refused in production** (`VERCEL_ENV === 'production'`): `initializePayment()` throws, and `creditForPayment()` never credits a payment whose `environment` is `sandbox` — sandbox test numbers always succeed, so a sandbox key in prod mints real credits. Local/preview keep working on sandbox; test number `4149518161` = successful payment.
+
+**After a purchase** the customer must land on the song they paid for. Whoever sends a 402 unlock to `/checkout` stores the order id in `sessionStorage['ct-unlock']` (home wizard, `/create/preview`, dashboard); `/payments/callback` spends the new credits on it via `POST /api/orders/[id]/unlock`, then goes to `/dashboard?paid=1`. `/checkout`'s "use credits" button unlocks that same id. Nothing on the client creates an order or calls `/api/checkout` any more — that old path charged 20 credits for an empty duplicate order and left the real song locked.
 
 ### Promo codes (server-only)
 `src/lib/promo.ts` — `PROMO_CODES` list (e.g. `CANTA40` = 40% off). **Never import this from client code** (keeps the code list non-enumerable); the client uses `promoClient.ts` / `POST /api/promo/validate`. `applyPromo()` discounts the **price only**, never the credits granted, with a `MIN_PRICE` floor. The `influencer` label is stored on the payment row + Moneroo metadata for commission tracking.
@@ -110,7 +116,7 @@ A generated song is **locked** until credits are spent on it. `orders.unlocked` 
 
 ⚠️ **`supabase-setup.sql` is applied by hand, not by a migration tool.** Adding a table or column to that file does **nothing** until someone pastes it into the Supabase SQL Editor. A feature whose section has not been run fails at runtime, not at build: expect `save_failed`/500s, an empty admin tab, or `Could not find the table 'public.X' in the schema cache` in the server log. Check this before debugging anything data-related that "should work". The `orders.unlocked` block is written as `default true` then flipped to `default false` on purpose — that keeps it idempotent, so re-running the file never re-locks existing songs.
 
-**`supabase-setup.sql`** (run once in the Supabase SQL Editor) is the source of truth for the schema: creates the public `songs` bucket, adds `orders.lyrics`, the `payments` table (+ promo/amount/influencer columns), and `page_views`. RLS approach: setting `SUPABASE_SERVICE_ROLE_KEY` bypasses RLS, so only the public-bucket section is strictly required; the storage/RLS policy sections are only needed if you run on the anon key.
+**`supabase-setup.sql`** (run once in the Supabase SQL Editor) is the source of truth for the schema: creates the public `songs` bucket, adds `orders.lyrics`, the `payments` table (+ promo/amount/influencer columns), and `page_views`. RLS approach: the server always uses `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS, so the app needs **no policy**. §2–3 *drop* the permissive storage and table policies an older version of the file created (they exposed every order and every song to the anon key) — never re-add one to "fix" a read problem; use a server route.
 
 ### i18n
 `src/context/LanguageContext.tsx` (`useLanguage`) — `t('a.b.c', { name })` looks up nested keys in `src/locales/es.json` / `en.json` with `{placeholder}` replacement. Default `es` (persisted in `localStorage['ct-lang']`). **Every user-facing string must exist in BOTH locale files with identical key paths** — a missing key makes `t()` return the raw key. Some components branch on language by comparing a translated value (e.g. `t('nav.login') === 'Log in'`); keep those exact strings intact.
@@ -146,17 +152,17 @@ Admin → **Messages** tab lists them (`GET /api/admin/contact`, `PATCH /api/adm
 
 **Two wizards exist and must be kept in step** — the home one (`/`, scrolls to `#studio`, steps 1-5 in `page.tsx`) and the multi-page `/create` → `/create/details` → `/create/preview`. They are near-duplicates, and drift between them has caused real bugs (the voice picker existed in only one of them). Header "Create My Song" and the dashboard both link to `/create`.
 
-Flow: brief → editable lyrics (`/api/generate-lyrics`, public + IP-limited) → **the song itself** (`/api/generate-song`) → play it / download it (sign-in required) → sign in to save it. The brief travels in `sessionStorage['ct-order']`.
+Flow: sign in → brief → editable lyrics (`/api/generate-lyrics`, home wizard only) → **the song itself** (`/api/generate-song`, which saves the order server-side, locked) → unlock with credits (buying a pack first if needed, see *After a purchase*) → play / download / share. `/create/details` hands the brief to `/create/preview` in `sessionStorage['ct-order']`, and that is its only job.
 
-On the dashboard, a pending `ct-order` is turned into an order via `POST /api/orders` with the audio attached — and **`/api/checkout` is deliberately NOT called**, because the credit was already spent at generation (calling it would double-charge). `POST /api/orders` sets status **`READY`** when `audioUrl` points at our own storage bucket (validated prefix), else `PENDING_PAYMENT`.
-
-A brief with **no audio** on the dashboard is only resumed at `/create/preview` when the user just came back from a credit purchase (`?paid=1`); otherwise it's stale junk and is discarded. Do not "helpfully" redirect here — `/create/preview` starts composing on mount, so redirecting a returning user there charges them 20 credits for a song they never asked for.
+The order exists from generation on, so **nothing downstream turns a brief into an order**. The dashboard just deletes any leftover `ct-order`: it used to `POST /api/orders` with it (a locked duplicate of a song already in the library) or, after a payment, send the user back to `/create/preview` — which composes on mount, so it billed MiniMax for a second song instead of unlocking the first. "Save my song" in both wizards only opens the dashboard. `POST /api/orders` still exists (status **`READY`** when `audioUrl` points at our own bucket, else `PENDING_PAYMENT`) but no current flow calls it.
 
 Orders link to the user by id/`client_email`; the dashboard loads them via `/api/orders?email=`. Revisions: `/order/[id]/review` → `PUT /api/orders/[id]`.
 
 Order status: `PENDING_PAYMENT`, `IN_PRODUCTION`, `READY`, `REVISION_REQUESTED`, `DELIVERED`.
 
-**Stale path to watch**: `/checkout`'s "use a credit" branch still creates an order and calls `/api/checkout` (spending credits) without generating anything. It's effectively unreachable now (users only land there with 0 credits, i.e. the *buy* branch), but it would double-charge if it were reached.
+`/api/checkout` (spend credits, mark `IN_PRODUCTION`, no unlock) is dead code from the pre-paywall model — the payment callback made it reachable and it billed customers for nothing. Do not call it again; unlocking is `POST /api/orders/[id]/unlock`.
+
+**Known gap — credits are not atomic.** The balance lives in `app_metadata` and is read-modify-written (`credits.ts`), so two concurrent spends can both pass on one balance (e.g. a scripted double unlock). Fixing it needs a DB-side balance with a locking RPC.
 
 ### Front-end gotchas that cost real debugging time
 - **Generated MP3s report `duration = Infinity`** until the browser scans to the end, so timers show `0:00 / 0:00` and progress never advances. The dashboard player probes the real duration by seeking past the end once, then resetting (see `playIntentRef` / `probing`).

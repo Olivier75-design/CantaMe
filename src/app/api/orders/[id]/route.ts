@@ -5,6 +5,7 @@ import { spendCredits, addCredits } from '@/lib/credits';
 import { CREDITS } from '@/lib/constants';
 import { verifyAdminRequest, getUserFromRequest } from '@/lib/admin';
 import { rateLimit } from '@/lib/rateLimit';
+import { hideLockedAudio, publicOrderView } from '@/lib/orderAccess';
 
 // Revisions regenerate the song on the spot -> Node runtime, allow a few minutes.
 export const runtime = 'nodejs';
@@ -26,7 +27,8 @@ export async function GET(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    return NextResponse.json(order);
+    // Public (share / result / review pages): no buyer PII, no locked audio.
+    return NextResponse.json(publicOrderView(order));
   } catch (error) {
     console.error('Error fetching order:', error);
     return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 });
@@ -58,7 +60,7 @@ export async function PUT(
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
       if (order.status === 'READY' && (order.audio_url || order.audioUrl)) {
-        return NextResponse.json(order);
+        return NextResponse.json(hideLockedAudio(order));
       }
 
       // The preview already composed the FULL song (we generate once, then only
@@ -68,7 +70,7 @@ export async function PUT(
       const previewAudio = order.audio_url || order.audioUrl;
       if (previewAudio) {
         const updated = await db.updateOrder(id, { audioUrl: previewAudio, status: 'READY' });
-        return NextResponse.json(updated);
+        return NextResponse.json(updated && hideLockedAudio(updated));
       }
 
       // Fallback: no preview audio on the order (legacy/edge) -> generate now.
@@ -104,7 +106,7 @@ export async function PUT(
       });
 
       const updated = await db.updateOrder(id, { audioUrl: result.audioUrl, status: 'READY' });
-      return NextResponse.json(updated);
+      return NextResponse.json(updated && hideLockedAudio(updated));
     }
 
     // Live revision: regenerate the song NOW from the saved order data + the notes.
@@ -118,6 +120,11 @@ export async function PUT(
       }
       if (!ownsOrder(order, user.id)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      // A revision returns the new audio, and costs half an unlock: allowed on a
+      // locked song it would be a half-price way around the paywall.
+      if (order.unlocked === false) {
+        return NextResponse.json({ error: 'locked' }, { status: 402 });
       }
       if (!(await rateLimit(`rev:${user.id}`, 10, 60))) {
         return NextResponse.json({ error: 'Too many requests' }, { status: 429 });

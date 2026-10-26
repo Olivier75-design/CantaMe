@@ -94,7 +94,9 @@ export default function HomeDashboardPage() {
       });
       const data = await res.json();
       if (res.status === 402) {
-        router.push('/checkout'); // not enough credits -> buy a pack
+        // Not enough credits -> buy a pack; the callback then unlocks THIS song.
+        sessionStorage.setItem('ct-unlock', generatedOrderId);
+        router.push('/checkout');
         return;
       }
       if (!res.ok) throw new Error(data?.error || 'Error');
@@ -293,20 +295,9 @@ export default function HomeDashboardPage() {
     return () => clearTimeout(id);
   }, [isGenerating, isGeneratingLyrics]);
 
-  // Save the brief and continue to sign-in, then the credit step.
+  // The song was saved to the library when it was generated (that needs an
+  // account), so there is nothing left to hand over: just open the library.
   const handleGetSong = () => {
-    const orderDetails = {
-      ...form,
-      occasion: selectedOccasion,
-      style: selectedStyle,
-      tier: 'credit',
-      price: 2,
-      audioUrl: generatedAudioUrl,
-      lyrics,
-    };
-    sessionStorage.setItem('ct-order', JSON.stringify(orderDetails));
-    // Logged-in users skip sign-in and go straight to the dashboard, which
-    // finalizes the song automatically. Guests sign in first (incl. Google).
     router.push(user ? '/dashboard' : '/signin');
   };
 

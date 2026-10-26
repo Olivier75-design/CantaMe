@@ -18,6 +18,7 @@ interface OrderData {
   price: number;
   audioUrl?: string;
   audio_url?: string;
+  unlocked?: boolean;
   lyrics?: string;
   createdAt?: string;
   created_at?: string;
@@ -140,6 +141,11 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
                   </div>
                   <p className="sh-foot">{t('result.freeToUse')}</p>
                 </>
+              ) : order.unlocked === false ? (
+                <div className="mt-lg">
+                  <p className="body-md mb-md">{t('credits.unlockSubtitle')}</p>
+                  <Link href="/dashboard" className="btn btn-primary">🔓 {t('credits.signinForSecond')}</Link>
+                </div>
               ) : (
                 <p className="body-md mt-lg" style={{ color: 'var(--accent-primary)' }}>
                   <span className="animate-pulse">🎵 {t('result.processing')}</span>

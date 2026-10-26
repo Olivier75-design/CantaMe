@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUnlockedOrder } from '@/lib/orderAccess';
+import { requireShareableOrder } from '@/lib/orderAccess';
 
 // Streams the order's song back with a `Content-Disposition: attachment` header
 // so the browser downloads the file directly (with a friendly, person-named
@@ -20,9 +20,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    // Was wide open: an order id alone downloaded the song. With a paywall in
-    // front of the audio that is a revenue hole, not just a privacy one.
-    const access = await requireUnlockedOrder(request, id);
+    // Was wide open: an order id alone downloaded the song, locked or not. Now
+    // only a paid-for song downloads — the same songs its share link plays.
+    const access = await requireShareableOrder(id);
     if (!access.ok) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }

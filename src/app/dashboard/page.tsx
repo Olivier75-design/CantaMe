@@ -73,13 +73,8 @@ export default function DashboardPage() {
   const [buyPromoCode, setBuyPromoCode] = useState('');
   const [buyPromoPct, setBuyPromoPct] = useState(0);
   const [buyPromoMsg, setBuyPromoMsg] = useState<string | null>(null);
+  const [buyError, setBuyError] = useState(false);
   const [checkingBuyPromo, setCheckingBuyPromo] = useState(false);
-
-  // Auto-finalize a pending song order right after login (incl. Google OAuth).
-  const [finalizing, setFinalizing] = useState(false);
-  const finalizedRef = useRef(false);
-  // True only when we arrived here straight from a successful credit purchase.
-  const cameFromPaymentRef = useRef(false);
 
   // Library controls
   const [filter, setFilter] = useState<string>('all');
@@ -144,7 +139,6 @@ export default function DashboardPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (new URLSearchParams(window.location.search).get('paid') === '1') {
-      cameFromPaymentRef.current = true;
       setJustPaid(true);
       window.history.replaceState({}, '', '/dashboard');
     }
@@ -165,68 +159,14 @@ export default function DashboardPage() {
     })();
   }, [user]);
 
-  // Show the "creating your song" screen immediately if an order is pending.
+  // Generation saves the order server-side, so a brief still in sessionStorage
+  // is only a wizard leftover. It used to be "finalized" here: turned into an
+  // order (a locked duplicate of a song already in the library), or — right
+  // after a payment — sent back to /create/preview, which composed and billed
+  // a second song instead of unlocking the one the customer paid for.
   useEffect(() => {
-    if (typeof window !== 'undefined' && sessionStorage.getItem('ct-order')) setFinalizing(true);
+    sessionStorage.removeItem('ct-order');
   }, []);
-
-  // Finalize the pending order once user + credit balance are known.
-  useEffect(() => {
-    if (!user?.id || credits === null || finalizedRef.current) return;
-    const stored = sessionStorage.getItem('ct-order');
-    if (!stored) return;
-    finalizedRef.current = true;
-
-    (async () => {
-      const brief = JSON.parse(stored);
-
-      // The song is composed BEFORE we get here, so a brief with no audio is
-      // either (a) someone resuming right after buying credits for it, or
-      // (b) leftover junk from an abandoned session. Only (a) may resume
-      // composing — otherwise a returning user who just wanted to log in gets
-      // yanked into the wizard AND charged for a song they never asked for.
-      if (!brief.audioUrl) {
-        if (cameFromPaymentRef.current) {
-          router.push('/create/preview');
-        } else {
-          sessionStorage.removeItem('ct-order');
-          setFinalizing(false);
-        }
-        return;
-      }
-
-      setFinalizing(true);
-      try {
-        // Save the EXACT song that was generated. No /api/checkout call: the
-        // credit was already spent at generation time (or it was the free
-        // no-signup song), so charging again here would double-bill.
-        const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) };
-        const res = await fetch('/api/orders', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ ...brief, tier: 'credit', price: 0, status: 'READY' }),
-        });
-        const order = await res.json();
-        if (!order?.id) throw new Error('order');
-
-        sessionStorage.removeItem('ct-order');
-        setJustPaid(true);
-        // The song is already attached, so it shows up ready to play.
-        await Promise.all([
-          refetchOrders(),
-          fetch('/api/credits', { headers: await authHeaders() })
-            .then((r) => r.json())
-            .then((c) => { if (typeof c.credits === 'number') setCredits(c.credits); }),
-        ]);
-      } catch (e) {
-        // Keep the brief in sessionStorage so nothing is lost; the song itself
-        // was already delivered in the wizard.
-        console.error('Could not save the song to the library:', e);
-      } finally {
-        setFinalizing(false);
-      }
-    })();
-  }, [user, credits, router, refetchOrders]);
 
   // Drive any in-progress order to completion: start its background generation
   // (or resume it after a reload) and poll until the full song is READY.
@@ -293,7 +233,8 @@ export default function DashboardPage() {
 
   const unlockOrder = async (id: string) => {
     const res = await fetch(`/api/orders/${id}/unlock`, { method: 'POST', headers: await authHeaders() });
-    if (res.status === 402) { router.push('/checkout'); return; } // out of credits
+    // Out of credits: remember which song to unlock once the pack is paid for.
+    if (res.status === 402) { sessionStorage.setItem('ct-unlock', id); router.push('/checkout'); return; }
     if (res.ok) refetchOrders();
   };
   const nameOf = (o: Order) => o.recipientName || o.recipient_name || '—';
@@ -358,6 +299,7 @@ export default function DashboardPage() {
   const buyCredits = async () => {
     if (!user?.id) return;
     setBuying(true);
+    setBuyError(false);
     try {
       const pack = CREDITS.packs.find((p) => p.credits === buyQty) || CREDITS.packs[0];
       const r = await fetch('/api/payments/create', {
@@ -372,8 +314,10 @@ export default function DashboardPage() {
       const d = await r.json();
       if (d.checkoutUrl) { window.location.href = d.checkoutUrl; return; }
       setBuying(false);
+      setBuyError(true);
     } catch {
       setBuying(false);
+      setBuyError(true);
     }
   };
 
@@ -408,11 +352,10 @@ export default function DashboardPage() {
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  if (loading || !user || finalizing) {
+  if (loading || !user) {
     return (
       <div className="section text-center">
         <div className="spinner-lg" style={{ margin: '4rem auto var(--space-lg)' }} />
-        {finalizing && <h2 className="heading-md">🎶 {t('dashboard.creatingSong')}</h2>}
       </div>
     );
   }
@@ -710,6 +653,9 @@ export default function DashboardPage() {
                               return `${t('credits.confirmBuy')} · $${final.toFixed(2)}`;
                             })()}
                           </button>
+                          {buyError && (
+                            <p className="body-sm" style={{ marginTop: 'var(--space-sm)', color: '#F25F4C' }}>⚠️ {t('credits.payFailed')}</p>
+                          )}
                         </div>
                       ) : (
                         <button className="btn btn-primary w-full mt-sm" onClick={() => setShowBuy(true)}>🎫 {t('credits.buyCredits')}</button>

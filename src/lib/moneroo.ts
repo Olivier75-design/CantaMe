@@ -10,6 +10,11 @@ const BASE = process.env.MONEROO_API_BASE || 'https://api.moneroo.io/v1';
 const KEY = process.env.MONEROO_SECRET_KEY;
 export const MONEROO_CURRENCY = process.env.MONEROO_CURRENCY || 'USD';
 
+// The live site ran on a sandbox key: real cards are declined on a sandbox
+// checkout, and Moneroo's always-approved test cards would have minted real
+// credits. Sandbox is for local/preview only.
+const IS_PRODUCTION = process.env.VERCEL_ENV === 'production';
+
 export interface InitInput {
   amount: number;
   currency: string;
@@ -19,8 +24,23 @@ export interface InitInput {
   metadata?: Record<string, unknown>;
 }
 
+// Moneroo rejects the whole initialize call (422) unless every metadata value is
+// a string, boolean or integer: a `null` (no promo code) or a decimal (a promo
+// price like 2.4) blocked every purchase. Drop empty values, stringify the rest.
+function monerooMetadata(meta: Record<string, unknown> = {}): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
+  for (const [k, v] of Object.entries(meta)) {
+    if (v === null || v === undefined) continue;
+    out[k] = typeof v === 'boolean' || (typeof v === 'number' && Number.isInteger(v)) ? v : String(v);
+  }
+  return out;
+}
+
 export async function initializePayment(input: InitInput): Promise<{ id: string; checkoutUrl: string }> {
   if (!KEY) throw new Error('MONEROO_SECRET_KEY manquant côté serveur.');
+  if (IS_PRODUCTION && KEY.startsWith('pvk_sandbox_')) {
+    throw new Error('MONEROO_SECRET_KEY is a sandbox key in production — set the live key in Vercel.');
+  }
   const res = await fetch(`${BASE}/payments/initialize`, {
     method: 'POST',
     headers: {
@@ -28,7 +48,7 @@ export async function initializePayment(input: InitInput): Promise<{ id: string;
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, metadata: monerooMetadata(input.metadata) }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.data?.checkout_url) {
@@ -37,14 +57,14 @@ export async function initializePayment(input: InitInput): Promise<{ id: string;
   return { id: String(data.data.id), checkoutUrl: String(data.data.checkout_url) };
 }
 
-export async function verifyPayment(id: string): Promise<{ status: string; raw: unknown }> {
+export async function verifyPayment(id: string): Promise<{ status: string; environment?: string; raw: unknown }> {
   if (!KEY) throw new Error('MONEROO_SECRET_KEY manquant côté serveur.');
   const res = await fetch(`${BASE}/payments/${id}/verify`, {
     headers: { Authorization: `Bearer ${KEY}`, Accept: 'application/json' },
   });
   const data = await res.json().catch(() => ({}));
-  const d = (data?.data || {}) as { status?: string };
-  return { status: d.status || 'unknown', raw: d };
+  const d = (data?.data || {}) as { status?: string; environment?: string };
+  return { status: d.status || 'unknown', environment: d.environment, raw: d };
 }
 
 // Verify a payment with Moneroo and, if successful and not already credited,
@@ -52,6 +72,10 @@ export async function verifyPayment(id: string): Promise<{ status: string; raw: 
 export async function creditForPayment(paymentId: string): Promise<{ status: string; credited?: number }> {
   const v = await verifyPayment(paymentId);
   if (v.status !== 'success') return { status: v.status };
+  if (IS_PRODUCTION && v.environment === 'sandbox') {
+    console.error(`Moneroo: sandbox payment ${paymentId} refused in production`);
+    return { status: 'sandbox_refused' };
+  }
 
   const supabase = getSupabaseServer();
   // Atomically claim the row: only the first caller flips pending -> completed.

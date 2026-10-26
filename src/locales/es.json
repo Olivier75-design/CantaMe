@@ -180,6 +180,7 @@
     "promoApply": "Aplicar",
     "promoApplied": "¡{pct}% de descuento aplicado!",
     "promoInvalid": "Código no válido o expirado",
+    "payFailed": "No se pudo iniciar el pago. Inténtalo de nuevo.",
     "yourBalance": "Tu saldo",
     "readyTitle": "Todo listo",
     "readyBody": "Tienes {count} crédito(s). Usa 20 para desbloquear esta canción al instante.",

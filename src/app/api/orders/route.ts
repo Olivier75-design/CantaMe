@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getUserFromRequest, isAdminEmail } from '@/lib/admin';
+import { hideLockedAudio } from '@/lib/orderAccess';
 
 // Create an order. Identity (owner id + email) is taken from the authenticated
 // session, never from the body — otherwise anyone could create orders in
@@ -70,7 +71,8 @@ export async function GET(request: NextRequest) {
     }
 
     const orders = await db.getOrders({ status, email });
-    return NextResponse.json(orders);
+    // The owner's own list still must not carry locked audio (devtools shows it).
+    return NextResponse.json(admin ? orders : orders.map(hideLockedAudio));
   } catch (error) {
     console.error('Error fetching orders:', error);
     return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });

@@ -92,7 +92,9 @@ export default function PreviewPage() {
       });
       const data = await res.json();
       if (res.status === 402) {
-        router.push('/checkout'); // out of credits -> buy a pack
+        // Out of credits -> buy a pack; the callback then unlocks THIS song.
+        sessionStorage.setItem('ct-unlock', orderId);
+        router.push('/checkout');
         return;
       }
       if (!res.ok) throw new Error(data?.error || 'Error');
@@ -128,14 +130,11 @@ export default function PreviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating]);
 
-  // Save the brief + the generated song, then continue.
+  // The song was saved to the library when it was generated, so there is
+  // nothing to hand over — handing the brief to the dashboard made it create a
+  // locked duplicate of this song.
   const handleGetSong = () => {
-    if (!orderData) return;
-    sessionStorage.setItem(
-      'ct-order',
-      JSON.stringify({ ...orderData, tier: 'credit', price: 2, audioUrl, lyrics })
-    );
-    // Logged-in users go to the dashboard (saves it); guests sign in first.
+    sessionStorage.removeItem('ct-order');
     router.push(user ? '/dashboard' : '/signin');
   };
 

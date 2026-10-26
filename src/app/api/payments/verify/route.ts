@@ -15,6 +15,6 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Verify failed';
     console.error('payments/verify error:', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Verify failed' }, { status: 500 });
   }
 }

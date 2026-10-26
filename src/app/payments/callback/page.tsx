@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
+import { authHeaders } from '@/lib/authClient';
 
 type Phase = 'checking' | 'success' | 'failed';
 
@@ -23,20 +24,28 @@ export default function PaymentCallbackPage() {
     }
 
     // Confirm server-side (idempotent) then send the user to their dashboard.
-    fetch(`/api/payments/verify?paymentId=${encodeURIComponent(paymentId)}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.status === 'success') {
-          setPhase('success');
-          // If a song order is pending, return to checkout to finalize it with
-          // the freshly-bought credits; otherwise it was a standalone top-up.
-          const pending = sessionStorage.getItem('ct-order');
-          setTimeout(() => router.push(pending ? '/checkout' : '/dashboard?paid=1'), 1400);
-        } else {
-          setPhase('failed');
+    (async () => {
+      try {
+        const d = await fetch(`/api/payments/verify?paymentId=${encodeURIComponent(paymentId)}`).then((r) => r.json());
+        if (d.status !== 'success') { setPhase('failed'); return; }
+        // Bought to unlock a specific song: spend the new credits on it now, so
+        // the customer lands on a song they can play. (This used to route back
+        // to /checkout, whose "use a credit" path billed an empty duplicate.)
+        const unlockId = sessionStorage.getItem('ct-unlock');
+        if (unlockId) {
+          await fetch(`/api/orders/${encodeURIComponent(unlockId)}/unlock`, {
+            method: 'POST',
+            headers: await authHeaders(),
+          }).catch(() => null);
+          sessionStorage.removeItem('ct-unlock');
         }
-      })
-      .catch(() => setPhase('failed'));
+        sessionStorage.removeItem('ct-order');
+        setPhase('success');
+        setTimeout(() => router.push('/dashboard?paid=1'), 1400);
+      } catch {
+        setPhase('failed');
+      }
+    })();
   }, [router]);
 
   return (

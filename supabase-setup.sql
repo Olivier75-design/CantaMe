@@ -2,11 +2,11 @@
 -- CantaMe — Supabase setup (run once in the SQL Editor)
 -- Fixes: "new row violates row-level security policy" on audio upload.
 --
--- ✅ RECOMMENDED: instead of the policies below, just set
---    SUPABASE_SERVICE_ROLE_KEY in your env (.env.local + Vercel).
---    The service_role key bypasses RLS entirely, so section 1 alone
---    (public bucket) is enough. Sections 2 & 3 are only needed if you
---    keep using the anon key (less secure — anyone can read/write).
+-- ✅ REQUIRED: set SUPABASE_SERVICE_ROLE_KEY in your env (.env.local +
+--    Vercel). The server uses it and it bypasses RLS, so the app needs
+--    NO policy at all. Sections 2 & 3 REMOVE the permissive policies an
+--    older version of this file created (they let anyone list every song
+--    and read every order with the public anon key).
 -- ============================================================
 
 -- 1) Storage bucket "songs": create it + make it PUBLIC so the
@@ -127,28 +127,32 @@ alter table public.song_ratings add column if not exists featured boolean not nu
 create index if not exists song_ratings_featured_idx on public.song_ratings (featured) where featured;
 
 
--- ── Everything below is ONLY needed if you do NOT set the service_role key ──
+-- ── Lock-down: the app needs NO policy (the server uses service_role) ──
 
--- 2) Storage policies: allow read/insert/update on the "songs" bucket.
-drop policy if exists "songs_read"   on storage.objects;
-create policy "songs_read"   on storage.objects for select using (bucket_id = 'songs');
+-- 2) Storage: drop EVERY policy on the "songs" bucket, whatever its name.
+--    A public bucket still serves /object/public/ URLs with no policy, so
+--    playback keeps working. A select policy let anyone LIST all songs —
+--    locked ones included, i.e. the whole catalogue without paying — and
+--    an insert policy let anyone upload arbitrary files into the bucket.
+do $$
+declare p record;
+begin
+  for p in
+    select policyname from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and (coalesce(qual, '') || coalesce(with_check, '')) like '%songs%'
+  loop
+    execute format('drop policy %I on storage.objects', p.policyname);
+  end loop;
+end $$;
 
-drop policy if exists "songs_insert" on storage.objects;
-create policy "songs_insert" on storage.objects for insert with check (bucket_id = 'songs');
-
-drop policy if exists "songs_update" on storage.objects;
-create policy "songs_update" on storage.objects for update using (bucket_id = 'songs');
-
--- 3) App tables: allow the app to read/write orders, revisions, styles.
+-- 3) App tables: RLS on, permissive policies gone (anon key reads nothing).
 alter table if exists public.orders       enable row level security;
 alter table if exists public.revisions    enable row level security;
 alter table if exists public.music_styles enable row level security;
+alter table if exists public.payments     enable row level security;
+alter table if exists public.page_views   enable row level security;
 
-drop policy if exists "orders_all" on public.orders;
-create policy "orders_all" on public.orders for all using (true) with check (true);
-
+drop policy if exists "orders_all"    on public.orders;
 drop policy if exists "revisions_all" on public.revisions;
-create policy "revisions_all" on public.revisions for all using (true) with check (true);
-
-drop policy if exists "styles_all" on public.music_styles;
-create policy "styles_all" on public.music_styles for all using (true) with check (true);
+drop policy if exists "styles_all"    on public.music_styles;

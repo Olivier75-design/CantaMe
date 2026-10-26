@@ -69,45 +69,22 @@ export default function CheckoutPage() {
     refreshCredits();
   }, [refreshCredits]);
 
-  // Create the order (once) and return its id.
-  const createOrder = async (): Promise<string | null> => {
-    const res = await fetch('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-      body: JSON.stringify({
-        ...orderData,
-        tier: 'credit',
-        price: 2,
-      }),
-    });
-    const data = await res.json();
-    return data?.id || null;
-  };
 
-  // Spend 1 credit to finalize -> dashboard.
-  const finalize = async (orderId: string): Promise<boolean> => {
-    const res = await fetch('/api/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-      body: JSON.stringify({ orderId }),
-    });
-    if (res.status === 402) {
-      const d = await res.json();
-      setCredits(typeof d.credits === 'number' ? d.credits : 0);
-      return false;
-    }
-    return res.ok;
-  };
-
-  // Path A: user has credits -> unlock immediately.
+  // Path A: user has credits -> unlock the song they came here for. It already
+  // exists (generation saves it): creating a new order + /api/checkout here
+  // charged 20 credits for an empty duplicate and left the real song locked.
   const handleUseCredit = async () => {
+    const unlockId = sessionStorage.getItem('ct-unlock');
+    if (!unlockId) { router.push('/dashboard'); return; }
     setError(null);
     setIsProcessing(true);
     try {
-      const orderId = await createOrder();
-      if (!orderId) throw new Error('order');
-      const ok = await finalize(orderId);
-      if (!ok) throw new Error('no_credits');
+      const res = await fetch(`/api/orders/${encodeURIComponent(unlockId)}/unlock`, {
+        method: 'POST',
+        headers: await authHeaders(),
+      });
+      if (!res.ok) throw new Error('unlock');
+      sessionStorage.removeItem('ct-unlock');
       sessionStorage.removeItem('ct-order');
       router.push('/dashboard?paid=1');
     } catch {

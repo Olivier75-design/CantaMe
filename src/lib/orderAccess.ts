@@ -43,3 +43,34 @@ export async function requireUnlockedOrder(
   if (!res.order.unlocked) return { ok: false, status: 402, error: 'locked' };
   return res;
 }
+
+// Paid for, by anyone. The share link already plays an unlocked song to whoever
+// holds the order id, so downloading it exposes nothing more — and the
+// download buttons are plain <a href> links, which cannot carry a Bearer token.
+export async function requireShareableOrder(orderId: string): Promise<{ ok: true; order: Order } | AccessFailure> {
+  const order = await db.getOrderById(orderId);
+  if (!order) return { ok: false, status: 404, error: 'not_found' };
+  if (order.unlocked === false) return { ok: false, status: 402, error: 'locked' };
+  return { ok: true, order };
+}
+
+// Any order JSON that leaves the server goes through this: a locked order's
+// audio URL IS the song (public bucket), and the dashboard hiding it in the UI
+// still left it one devtools click away.
+export function hideLockedAudio<T extends Partial<Order>>(order: T): T {
+  if (order.unlocked !== false) return order;
+  return { ...order, audio_url: undefined, audioUrl: undefined, instrumental_url: undefined, instrumentalUrl: undefined };
+}
+
+// What anyone holding an order id may see (the share link is public by design):
+// enough to render the song page, none of the buyer's personal data.
+const PRIVATE_ORDER_FIELDS = [
+  'client_email', 'clientEmail', 'user_id', 'userId', 'message', 'anecdotes',
+  'revisions', 'stripe_session_id', 'stripeSessionId',
+] as const;
+
+export function publicOrderView(order: Order): Partial<Order> {
+  const view: Partial<Order> = { ...hideLockedAudio(order) };
+  for (const k of PRIVATE_ORDER_FIELDS) delete view[k];
+  return view;
+}

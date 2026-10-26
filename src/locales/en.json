@@ -180,6 +180,7 @@
     "promoApply": "Apply",
     "promoApplied": "{pct}% discount applied!",
     "promoInvalid": "Invalid or expired code",
+    "payFailed": "Payment could not start. Please try again.",
     "yourBalance": "Your balance",
     "readyTitle": "You're all set",
     "readyBody": "You have {count} credit(s). Use 20 to unlock this song instantly.",
