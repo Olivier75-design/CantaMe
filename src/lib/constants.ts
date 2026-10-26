@@ -106,6 +106,16 @@ export const CREDITS = {
 export const CONTACT_SUBJECTS = ['general', 'order', 'payment', 'other'] as const;
 export type ContactSubject = (typeof CONTACT_SUBJECTS)[number];
 
+// Mirrors `contact.subjects.*` in the locale files, with both languages side by
+// side: the admin reads them in the admin's language, while a support reply
+// puts them in the subject line in the *customer's* language.
+export const CONTACT_SUBJECT_LABELS: Record<string, { en: string; es: string }> = {
+  general: { en: 'General question', es: 'Pregunta general' },
+  order: { en: 'My order', es: 'Mi pedido' },
+  payment: { en: 'Payment', es: 'Pago' },
+  other: { en: 'Something else', es: 'Otro tema' },
+};
+
 // Sample gallery entries for demo purposes
 export interface GalleryEntry {
   id: string;

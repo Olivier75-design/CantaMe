@@ -147,6 +147,16 @@ export async function listContactMessages(status?: string, limit = 200): Promise
   return (data || []).map((r) => mapMessage(r as ContactMessage));
 }
 
+export async function getContactMessage(id: string): Promise<ContactMessage | null> {
+  const { data, error } = await getSupabaseServer()
+    .from('contact_messages')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapMessage(data as ContactMessage);
+}
+
 export async function countNewMessages(): Promise<number> {
   const { count, error } = await getSupabaseServer()
     .from('contact_messages')

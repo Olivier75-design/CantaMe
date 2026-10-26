@@ -32,7 +32,7 @@ In `.env.local` (gitignored; `.env.example` is the authoritative list). All must
 - `MINIMAX_API_KEY`, `MINIMAX_API_HOST` — server, MiniMax **music** generation (and lyrics fallback).
 - `OPENAI_API_KEY`, `OPENAI_MODEL` — server, **lyrics** (preferred over MiniMax when set; model defaults to `gpt-4o-mini`).
 - `MONEROO_SECRET_KEY`, `MONEROO_WEBHOOK_SECRET`, `MONEROO_CURRENCY` — payments. Webhook fails **closed** if the secret is missing.
-- `RESEND_API_KEY`, `RESEND_FROM` — payment receipt emails (`lib/receiptEmail.ts`). Without the key no receipt is sent; `RESEND_FROM` defaults to `CantaMe <receipts@cantame.app>` and its domain must be verified in Resend.
+- `RESEND_API_KEY`, `RESEND_FROM`, `RESEND_SUPPORT_FROM` — transactional email through Resend (`lib/email.ts`): payment receipts (`lib/receiptEmail.ts`, default sender `CantaMe <receipts@cantame.app>`) and Admin → Messages replies (`lib/supportEmail.ts`, default `CantaMe Support <support@cantame.app>`). The domain must be verified in Resend. Without the key, receipts are skipped and replies return 503.
 - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` — shared rate-limit store. Without them, rate limiting falls back to a weaker per-instance in-memory limiter.
 - `NEXT_PUBLIC_SITE_URL` — canonical origin for OAuth redirects (see `lib/site.ts`). No trailing slash.
 - `NEXT_PUBLIC_ADMIN_EMAILS` — comma-separated admin allowlist. **Fail closed**: empty = nobody is admin.
@@ -144,7 +144,7 @@ There is **no real mailbox** — `hello@cantame.app` never existed and was remov
 
 `contact_messages` has **RLS enabled with no policies** — unlike the other app tables, which carry permissive `using (true)` policies. That's deliberate: only the service_role key may read it, so visitor names/emails are not exposed to the browser even through the anon key. Don't add a policy to "fix" a read problem; use a server route.
 
-Admin → **Messages** tab lists them (`GET /api/admin/contact`, `PATCH /api/admin/contact/[id]`), with an unread badge. The **Reply** button is a pre-filled `mailto:` — the admin answers from their own mailbox, which is why the app needs no SMTP or sending service (same constraint that makes sign-up use `admin.createUser`).
+Admin → **Messages** tab lists them (`GET /api/admin/contact`, `PATCH /api/admin/contact/[id]`), with an unread badge. **Reply** opens a box under the message; `POST /api/admin/contact/[id]/reply` sends it through Resend from `support@cantame.app` (signature + the customer's message quoted, in the customer's `locale`), then marks the message `replied`. It used to be a `mailto:`, which exposed the admin's personal address. The app still receives no mail: customers' answers go to `support@` and are read in Resend (Emails → Receiving, with *Enable Receiving* on for the domain). Copies of sent replies live in Resend → Emails; nothing is stored in the DB.
 
 `src/lib/contact.ts` is **server-only** (it imports `getSupabaseServer()`); the shared `CONTACT_SUBJECTS` whitelist lives in `lib/constants.ts` so the client modal can render it — same split as `promo.ts` / `promoClient.ts`.
 

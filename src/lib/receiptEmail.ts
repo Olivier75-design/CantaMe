@@ -1,12 +1,12 @@
 // Payment receipt email, sent through Resend once credits have been granted.
 //
-// SERVER ONLY. Self-contained on purpose (no app imports, no SDK): the Resend
-// HTTP API is one POST, and keeping this file dependency-free lets it be
-// rendered and checked outside Next. Degrades gracefully: without
-// RESEND_API_KEY nothing is sent, and a failed send never blocks crediting.
+// SERVER ONLY. Degrades gracefully: without RESEND_API_KEY nothing is sent,
+// and the caller makes sure a failed send never blocks crediting.
 //
-// There is no CantaMe mailbox (see "Contact form" in CLAUDE.md), so the email
-// points questions to the site's contact form instead of a reply address.
+// There is no CantaMe mailbox for receipts (see "Contact form" in CLAUDE.md),
+// so the email points questions to the site's contact form instead.
+
+import { emailShell, esc, resendConfigured, sendEmail } from './email';
 
 export type ReceiptLang = 'es' | 'en';
 
@@ -65,10 +65,6 @@ const COPY = {
   },
 } as const;
 
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-}
-
 export function buildReceiptEmail(d: ReceiptData): { subject: string; html: string; text: string } {
   const c = COPY[d.lang];
   const money = new Intl.NumberFormat(c.locale, { style: 'currency', currency: d.currency }).format(d.amount);
@@ -90,19 +86,11 @@ export function buildReceiptEmail(d: ReceiptData): { subject: string; html: stri
       </tr>`)
     .join('');
 
-  const html = `<!doctype html>
-<html lang="${d.lang}">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(c.subject)}</title></head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <div style="display:none;max-height:0;overflow:hidden;">${esc(c.preheader)}</div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
-    <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;">
-        <tr><td style="height:6px;background:#2563EB;"></td></tr>
-        <tr><td style="padding:32px 32px 8px;text-align:center;">
-          <div style="font-size:26px;font-weight:800;color:#2563EB;letter-spacing:-0.5px;">&#127925; CantaMe</div>
-        </td></tr>
-        <tr><td style="padding:16px 32px 0;">
+  const html = emailShell({
+    lang: d.lang,
+    title: c.subject,
+    preheader: c.preheader,
+    content: `<tr><td style="padding:16px 32px 0;">
           <h1 style="margin:0 0 8px;font-size:22px;color:#0f172a;">${esc(c.title)}</h1>
           <p style="margin:0;font-size:15px;line-height:1.6;color:#334155;">${esc(c.intro)}</p>
         </td></tr>
@@ -120,16 +108,10 @@ export function buildReceiptEmail(d: ReceiptData): { subject: string; html: stri
         </td></tr>
         <tr><td style="padding:28px 32px 32px;">
           <p style="margin:0;font-size:15px;line-height:1.6;color:#334155;">${esc(c.regards)}<br><strong>${esc(c.team)}</strong></p>
-        </td></tr>
-        <tr><td style="padding:18px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;">
-          <p style="margin:0 0 4px;font-size:12px;line-height:1.6;color:#64748b;">${esc(c.questions)} <a href="${esc(d.siteUrl)}" style="color:#2563EB;">${esc(c.contactLink)}</a>.</p>
-          <p style="margin:0;font-size:12px;line-height:1.6;color:#94a3b8;">${esc(c.automatic)}</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+        </td></tr>`,
+    footer: `<p style="margin:0 0 4px;font-size:12px;line-height:1.6;color:#64748b;">${esc(c.questions)} <a href="${esc(d.siteUrl)}" style="color:#2563EB;">${esc(c.contactLink)}</a>.</p>
+          <p style="margin:0;font-size:12px;line-height:1.6;color:#94a3b8;">${esc(c.automatic)}</p>`,
+  });
 
   const text = [
     c.title,
@@ -149,28 +131,13 @@ export function buildReceiptEmail(d: ReceiptData): { subject: string; html: stri
   return { subject: c.subject, html, text };
 }
 
-// Sends the receipt. The payment id doubles as Resend's idempotency key, so a
-// retried send never delivers a second copy.
+// Sends the receipt; a no-op without RESEND_API_KEY. The payment id doubles as
+// the idempotency key, so a retried send never delivers a second copy.
 export async function sendReceiptEmail(to: string, d: ReceiptData): Promise<void> {
-  const key = process.env.RESEND_API_KEY;
-  if (!key || !to) return;
+  if (!resendConfigured() || !to) return;
   const { subject, html, text } = buildReceiptEmail(d);
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      'Idempotency-Key': `receipt-${d.paymentId}`,
-    },
-    body: JSON.stringify({
-      from: process.env.RESEND_FROM || 'CantaMe <receipts@cantame.app>',
-      to: [to],
-      subject,
-      html,
-      text,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  }
+  await sendEmail(
+    { from: process.env.RESEND_FROM || 'CantaMe <receipts@cantame.app>', to, subject, html, text },
+    `receipt-${d.paymentId}`,
+  );
 }

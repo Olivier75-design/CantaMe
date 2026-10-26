@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { getSupabaseBrowser } from '@/lib/supabase';
 import { isAdminEmail } from '@/lib/admin';
 import { STYLE_PROMPTS } from '@/lib/musicPrompts';
-import { CREDITS } from '@/lib/constants';
+import { CREDITS, CONTACT_SUBJECT_LABELS } from '@/lib/constants';
 import AudioPlayer from '@/components/AudioPlayer';
 
 interface Revision {
@@ -110,16 +110,6 @@ const CONTACT_STATUS_COLORS: Record<string, string> = {
   archived: '#888',
 };
 
-// Mirrors `contact.subjects.*` in the locale files. Duplicated here because the
-// admin renders in whichever language the admin is browsing in, independently of
-// the language the visitor wrote in.
-const CONTACT_SUBJECT_LABELS: Record<string, { en: string; es: string }> = {
-  general: { en: 'General question', es: 'Pregunta general' },
-  order: { en: 'My order', es: 'Mi pedido' },
-  payment: { en: 'Payment', es: 'Pago' },
-  other: { en: 'Something else', es: 'Otro tema' },
-};
-
 const STUDIO_OCCASIONS = ['cumpleanos', 'boda', 'quinceanera', 'serenata', 'diaMadres', 'graduacion', 'declaracion', 'sanValentin', 'bautizo', 'otro'];
 const STUDIO_TONES = ['emotional', 'festive', 'romantic', 'funny'];
 
@@ -220,6 +210,11 @@ export default function AdminPage() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [messageFilter, setMessageFilter] = useState('all');
   const [loadingMessages, setLoadingMessages] = useState(true);
+  // The reply box open under one message (Resend sends it from support@).
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [replySending, setReplySending] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   // Song quality (thumbs up/down left by customers)
   const [ratings, setRatings] = useState<RatingStats | null>(null);
@@ -296,15 +291,38 @@ export default function AdminPage() {
     fetchMessages();
   }, [isAdmin, fetchMessages]);
 
-  // Reply from the admin's own mailbox: a mailto: link pre-filled with the
-  // original message quoted. This is why the app needs no SMTP/sending service.
-  const replyHref = (m: ContactMessage) => {
-    const label = CONTACT_SUBJECT_LABELS[m.subject]?.[isEn ? 'en' : 'es'] || m.subject;
-    const greeting = isEn ? `Hi ${m.name},` : `Hola ${m.name},`;
-    const wrote = isEn ? 'You wrote:' : 'Escribiste:';
-    const quoted = m.message.split('\n').map((l) => `> ${l}`).join('\n');
-    const body = `${greeting}\n\n\n\n---\n${wrote}\n${quoted}\n`;
-    return `mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent(`Re: ${label} — CantaMe`)}&body=${encodeURIComponent(body)}`;
+  // Reply by email without exposing the admin's address: the server sends it
+  // from support@ through Resend, with the signature and the customer's message
+  // quoted. The greeting is in the customer's language, not the admin's.
+  const openReply = (m: ContactMessage) => {
+    setReplyingTo(m.id);
+    setReplyText(m.locale === 'en' ? `Hi ${m.name},\n\n` : `Hola ${m.name},\n\n`);
+    setReplyError(null);
+  };
+
+  const sendReply = async (id: string) => {
+    setReplySending(true);
+    setReplyError(null);
+    try {
+      const res = await fetch(`/api/admin/contact/${id}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ message: replyText }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error === 'email_not_configured'
+          ? (isEn ? 'Email sending is not configured (RESEND_API_KEY).' : 'El envío de correos no está configurado (RESEND_API_KEY).')
+          : (isEn ? 'The email could not be sent. Please try again.' : 'No se pudo enviar el correo. Inténtalo de nuevo.'));
+      }
+      setReplyingTo(null);
+      setReplyText('');
+      fetchMessages();
+    } catch (e) {
+      setReplyError(e instanceof Error ? e.message : 'Error');
+    } finally {
+      setReplySending(false);
+    }
   };
 
   const updateMessage = async (id: string, patch: { status?: string; adminNote?: string }) => {
@@ -1344,8 +1362,8 @@ export default function AdminPage() {
 
               <p className="body-sm mb-lg" style={{ color: 'var(--text-muted)' }}>
                 {isEn
-                  ? 'Sent from the "Contact us" form in the footer. Reply opens your own mail app with the message quoted.'
-                  : 'Enviados desde el formulario "Contáctanos" del pie de página. Responder abre tu app de correo con el mensaje citado.'}
+                  ? 'Sent from the "Contact us" form in the footer. Replies go out from support@cantame.app; customers\' answers arrive in Resend → Emails → Receiving.'
+                  : 'Enviados desde el formulario "Contáctanos" del pie de página. Las respuestas salen de support@cantame.app; las respuestas de los clientes llegan a Resend → Emails → Receiving.'}
               </p>
 
               {loadingMessages ? (
@@ -1395,14 +1413,41 @@ export default function AdminPage() {
                         {m.message}
                       </p>
 
+                      {replyingTo === m.id && (
+                        <div style={{ marginBottom: 'var(--space-md)' }}>
+                          <textarea
+                            className="input-field"
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            maxLength={5000}
+                            autoFocus
+                            style={{ minHeight: 160, width: '100%' }}
+                          />
+                          <p className="body-sm" style={{ color: 'var(--text-muted)', margin: 'var(--space-xs) 0 var(--space-sm)' }}>
+                            {isEn
+                              ? `To ${m.email}, from support@cantame.app. The CantaMe signature and their message are added below your text.`
+                              : `Para ${m.email}, desde support@cantame.app. La firma de CantaMe y su mensaje se añaden debajo de tu texto.`}
+                          </p>
+                          {replyError && <p className="body-sm" style={{ color: '#F25F4C', marginBottom: 'var(--space-sm)' }}>⚠️ {replyError}</p>}
+                          <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+                            <button
+                              className="btn btn-sm btn-primary"
+                              onClick={() => sendReply(m.id)}
+                              disabled={replySending || !replyText.trim()}
+                            >
+                              {replySending ? '…' : `✉️ ${isEn ? 'Send' : 'Enviar'}`}
+                            </button>
+                            <button className="btn btn-sm btn-ghost" onClick={() => setReplyingTo(null)} disabled={replySending}>
+                              {isEn ? 'Cancel' : 'Cancelar'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
-                        <a
-                          className="btn btn-sm btn-primary"
-                          href={replyHref(m)}
-                          onClick={() => updateMessage(m.id, { status: 'replied' })}
-                        >
+                        <button className="btn btn-sm btn-primary" onClick={() => openReply(m)}>
                           ↩️ {isEn ? 'Reply' : 'Responder'}
-                        </a>
+                        </button>
                         {m.status === 'new' && (
                           <button className="btn btn-sm btn-ghost" onClick={() => updateMessage(m.id, { status: 'read' })}>
                             {isEn ? 'Mark read' : 'Marcar leído'}
