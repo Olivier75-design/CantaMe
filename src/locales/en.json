@@ -241,6 +241,7 @@
     "subtitle": "We're creating something special for {name}.",
     "status": "Order Status",
     "statuses": {
+      "PENDING_PAYMENT": "Awaiting Payment",
       "PAID": "Payment Received",
       "IN_PRODUCTION": "Creating Your Song",
       "READY": "Song Ready!",

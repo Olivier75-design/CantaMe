@@ -1,7 +1,8 @@
-// Answer to a "Contact us" message, written in Admin → Messages and sent
-// through Resend from the support address, so the admin's own mailbox never
-// shows. The customer's reply goes back to that address and is read in
-// Resend (Emails → Receiving) — the app does not receive mail.
+// Emails written by the admin and sent through Resend from the support
+// address, so the admin's own mailbox never shows: answers to "Contact us"
+// messages (Admin → Messages) and new messages to a customer about an order
+// (Admin → Orders). The customer's reply goes back to that address and is read
+// in Resend (Emails → Receiving) — the app does not receive mail.
 //
 // SERVER ONLY.
 
@@ -9,13 +10,12 @@ import { emailShell, esc, sendEmail } from './email';
 
 export type SupportLang = 'es' | 'en';
 
-export interface SupportReply {
+export interface SupportEmail {
   to: string;
   lang: SupportLang; // the customer's language, not the admin's
-  subjectLabel: string; // e.g. "My order", already in `lang`
-  reply: string; // what the admin typed, greeting included
-  originalMessage: string;
-  originalDate: Date;
+  subject: string;
+  body: string; // what the admin typed, greeting included
+  quote?: { message: string; date: Date }; // the customer's message, when answering one
   siteUrl: string;
 }
 
@@ -48,33 +48,43 @@ function paragraphs(text: string): string {
     .join('');
 }
 
-export function buildSupportReply(r: SupportReply): { subject: string; html: string; text: string } {
-  const c = COPY[r.lang];
-  const subject = `Re: ${r.subjectLabel} — CantaMe`;
-  const date = new Intl.DateTimeFormat(c.locale, { dateStyle: 'long', timeZone: 'UTC' }).format(r.originalDate);
+export function buildSupportEmail(e: SupportEmail): { subject: string; html: string; text: string } {
+  const c = COPY[e.lang];
+  const date = e.quote && new Intl.DateTimeFormat(c.locale, { dateStyle: 'long', timeZone: 'UTC' }).format(e.quote.date);
+
+  const quoteHtml = e.quote
+    ? `<tr><td style="padding:0 32px 32px;">
+          <p style="margin:0 0 6px;font-size:13px;color:#64748b;">${esc(c.wrote(date!))}</p>
+          <div style="border-left:3px solid #cbd5e1;padding:4px 0 4px 12px;font-size:14px;line-height:1.6;color:#64748b;">${esc(e.quote.message).replace(/\n/g, '<br>')}</div>
+        </td></tr>`
+    : '';
 
   const html = emailShell({
-    lang: r.lang,
-    title: subject,
-    preheader: r.reply.replace(/\s+/g, ' ').slice(0, 120),
-    content: `<tr><td style="padding:16px 32px 0;">
-          ${paragraphs(r.reply)}
+    lang: e.lang,
+    title: e.subject,
+    preheader: e.body.replace(/\s+/g, ' ').slice(0, 120),
+    content: `<tr><td style="padding:16px 32px ${e.quote ? 24 : 32}px;">
+          ${paragraphs(e.body)}
           <p style="margin:6px 0 0;font-size:15px;line-height:1.6;color:#334155;">${esc(c.regards)}<br><strong>${esc(c.team)}</strong></p>
         </td></tr>
-        <tr><td style="padding:24px 32px 32px;">
-          <p style="margin:0 0 6px;font-size:13px;color:#64748b;">${esc(c.wrote(date))}</p>
-          <div style="border-left:3px solid #cbd5e1;padding:4px 0 4px 12px;font-size:14px;line-height:1.6;color:#64748b;">${esc(r.originalMessage).replace(/\n/g, '<br>')}</div>
-        </td></tr>`,
-    footer: `<p style="margin:0;font-size:12px;line-height:1.6;color:#64748b;">${esc(c.answer)} · <a href="${esc(r.siteUrl)}" style="color:#2563EB;">cantame.app</a></p>`,
+        ${quoteHtml}`,
+    footer: `<p style="margin:0;font-size:12px;line-height:1.6;color:#64748b;">${esc(c.answer)} · <a href="${esc(e.siteUrl)}" style="color:#2563EB;">cantame.app</a></p>`,
   });
 
-  const quoted = r.originalMessage.split('\n').map((l) => `> ${l}`).join('\n');
-  const text = [r.reply.trim(), '', c.regards, c.team, '', c.wrote(date), quoted, '', c.answer].join('\n');
+  const text = [
+    e.body.trim(),
+    '',
+    c.regards,
+    c.team,
+    ...(e.quote ? ['', c.wrote(date!), e.quote.message.split('\n').map((l) => `> ${l}`).join('\n')] : []),
+    '',
+    c.answer,
+  ].join('\n');
 
-  return { subject, html, text };
+  return { subject: e.subject, html, text };
 }
 
-export async function sendSupportReply(r: SupportReply, idempotencyKey: string): Promise<void> {
-  const { subject, html, text } = buildSupportReply(r);
-  await sendEmail({ from: supportFrom(), to: r.to, subject, html, text }, idempotencyKey);
+export async function sendSupportEmail(e: SupportEmail, idempotencyKey: string): Promise<void> {
+  const { subject, html, text } = buildSupportEmail(e);
+  await sendEmail({ from: supportFrom(), to: e.to, subject, html, text }, idempotencyKey);
 }

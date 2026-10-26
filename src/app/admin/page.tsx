@@ -32,6 +32,7 @@ interface Order {
   status: string;
   audioUrl?: string;
   instrumentalUrl?: string;
+  language?: string;
   createdAt: string;
   revisions: Revision[];
 }
@@ -125,7 +126,9 @@ interface Analytics {
   error?: string;
 }
 
-const ALL_STATUSES = ['PAID', 'IN_PRODUCTION', 'READY', 'DELIVERED', 'REVISION_REQUESTED'];
+// PENDING_PAYMENT first: those are the customers who generated a song but
+// never paid for it — the ones worth writing to.
+const ALL_STATUSES = ['PENDING_PAYMENT', 'PAID', 'IN_PRODUCTION', 'READY', 'DELIVERED', 'REVISION_REQUESTED'];
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING_PAYMENT: '#888',
@@ -215,6 +218,16 @@ export default function AdminPage() {
   const [replyText, setReplyText] = useState('');
   const [replySending, setReplySending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
+
+  // New message to the customer behind an order (Orders → ✉️).
+  const [composeOrder, setComposeOrder] = useState<Order | null>(null);
+  const [composeSubject, setComposeSubject] = useState('');
+  const [composeBody, setComposeBody] = useState('');
+  const [composeSending, setComposeSending] = useState(false);
+  const [composeError, setComposeError] = useState<string | null>(null);
+  // Customers written to in this session, so the same person isn't messaged
+  // twice by mistake (one customer can have several orders).
+  const [messagedEmails, setMessagedEmails] = useState<Set<string>>(new Set());
 
   // Song quality (thumbs up/down left by customers)
   const [ratings, setRatings] = useState<RatingStats | null>(null);
@@ -322,6 +335,48 @@ export default function AdminPage() {
       setReplyError(e instanceof Error ? e.message : 'Error');
     } finally {
       setReplySending(false);
+    }
+  };
+
+  // Draft in the customer's language (the song's). An unpaid order gets a
+  // ready-to-edit note about the failed payment; anything else just a greeting.
+  const openCompose = (order: Order) => {
+    const en = order.language === 'en';
+    const who = order.recipientName || '';
+    setComposeOrder(order);
+    setComposeSubject(en ? `Your song for ${who} — CantaMe` : `Tu canción para ${who} — CantaMe`);
+    setComposeBody(
+      order.status === 'PENDING_PAYMENT'
+        ? en
+          ? `Hi,\n\nWe saw that you created a song for ${who} on CantaMe, but the payment couldn't be completed. That was a problem on our side, and it's now fixed.\n\nYour song is still waiting for you: sign in on cantame.app to unlock it.\n\n`
+          : `Hola,\n\nVimos que creaste una canción para ${who} en CantaMe, pero el pago no se pudo completar. Fue un problema de nuestro lado y ya está solucionado.\n\nTu canción te sigue esperando: entra a tu cuenta en cantame.app para desbloquearla.\n\n`
+        : en ? 'Hi,\n\n' : 'Hola,\n\n',
+    );
+    setComposeError(null);
+  };
+
+  const sendCompose = async () => {
+    if (!composeOrder) return;
+    setComposeSending(true);
+    setComposeError(null);
+    try {
+      const res = await fetch(`/api/admin/orders/${composeOrder.id}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ subject: composeSubject, message: composeBody }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error === 'email_not_configured'
+          ? (isEn ? 'Email sending is not configured (RESEND_API_KEY).' : 'El envío de correos no está configurado (RESEND_API_KEY).')
+          : (isEn ? 'The email could not be sent. Please try again.' : 'No se pudo enviar el correo. Inténtalo de nuevo.'));
+      }
+      setMessagedEmails((prev) => new Set(prev).add(composeOrder.clientEmail));
+      setComposeOrder(null);
+    } catch (e) {
+      setComposeError(e instanceof Error ? e.message : 'Error');
+    } finally {
+      setComposeSending(false);
     }
   };
 
@@ -746,6 +801,16 @@ export default function AdminPage() {
                             </td>
                             <td style={{ padding: 'var(--space-md)' }}>
                               <div className="flex gap-sm">
+                                <button
+                                  className={`btn btn-sm ${order.status === 'PENDING_PAYMENT' && !messagedEmails.has(order.clientEmail) ? 'btn-primary' : 'btn-ghost'}`}
+                                  title={order.clientEmail}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openCompose(order);
+                                  }}
+                                >
+                                  {messagedEmails.has(order.clientEmail) ? `✓ ${isEn ? 'Sent' : 'Enviado'}` : `✉️ ${isEn ? 'Message' : 'Mensaje'}`}
+                                </button>
                                 {order.status === 'PAID' && (
                                   <button
                                     className="btn btn-sm btn-ghost"
@@ -1478,6 +1543,72 @@ export default function AdminPage() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* New message to an order's customer */}
+          {composeOrder && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.7)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 210,
+                padding: 'var(--space-lg)',
+              }}
+              onClick={() => !composeSending && setComposeOrder(null)}
+            >
+              <div
+                className="card"
+                style={{ maxWidth: 600, width: '100%', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg-secondary)' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex justify-between items-center mb-md">
+                  <h3 className="heading-md">✉️ {isEn ? 'New message' : 'Nuevo mensaje'}</h3>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setComposeOrder(null)} disabled={composeSending}>✕</button>
+                </div>
+                <p className="body-sm mb-md" style={{ color: 'var(--text-muted)' }}>
+                  {isEn ? 'To' : 'Para'} <strong>{composeOrder.clientEmail}</strong>
+                  {' · '}{isEn ? 'from' : 'desde'} support@cantame.app
+                  {' · '}{composeOrder.language === 'en' ? 'EN' : 'ES'}
+                </p>
+                <label className="input-label">{isEn ? 'Subject' : 'Asunto'}</label>
+                <input
+                  className="input-field mb-md"
+                  value={composeSubject}
+                  onChange={(e) => setComposeSubject(e.target.value)}
+                  maxLength={150}
+                  style={{ width: '100%' }}
+                />
+                <label className="input-label">{isEn ? 'Message' : 'Mensaje'}</label>
+                <textarea
+                  className="input-field"
+                  value={composeBody}
+                  onChange={(e) => setComposeBody(e.target.value)}
+                  maxLength={5000}
+                  autoFocus
+                  style={{ minHeight: 220, width: '100%' }}
+                />
+                <p className="body-sm" style={{ color: 'var(--text-muted)', margin: 'var(--space-xs) 0 var(--space-md)' }}>
+                  {isEn ? 'The CantaMe signature is added below your text.' : 'La firma de CantaMe se añade debajo de tu texto.'}
+                </p>
+                {composeError && <p className="body-sm" style={{ color: '#F25F4C', marginBottom: 'var(--space-sm)' }}>⚠️ {composeError}</p>}
+                <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={sendCompose}
+                    disabled={composeSending || !composeSubject.trim() || !composeBody.trim()}
+                  >
+                    {composeSending ? '…' : `✉️ ${isEn ? 'Send' : 'Enviar'}`}
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => setComposeOrder(null)} disabled={composeSending}>
+                    {isEn ? 'Cancel' : 'Cancelar'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

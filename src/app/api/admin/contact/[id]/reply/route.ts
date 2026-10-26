@@ -5,7 +5,7 @@ import { getContactMessage, updateContactMessage } from '@/lib/contact';
 import { CONTACT_SUBJECT_LABELS } from '@/lib/constants';
 import { resendConfigured } from '@/lib/email';
 import { getSiteUrl } from '@/lib/site';
-import { sendSupportReply } from '@/lib/supportEmail';
+import { sendSupportEmail } from '@/lib/supportEmail';
 
 // Admin: answer a contact message by email, sent from the support address via
 // Resend (the admin's own address never shows). Marks the message replied only
@@ -43,14 +43,13 @@ export async function POST(
 
   const lang = m.locale === 'en' ? 'en' : 'es';
   try {
-    await sendSupportReply(
+    await sendSupportEmail(
       {
         to: m.email,
         lang,
-        subjectLabel: CONTACT_SUBJECT_LABELS[m.subject]?.[lang] || m.subject,
-        reply,
-        originalMessage: m.message,
-        originalDate: new Date(m.created_at),
+        subject: `Re: ${CONTACT_SUBJECT_LABELS[m.subject]?.[lang] || m.subject} — CantaMe`,
+        body: reply,
+        quote: { message: m.message, date: new Date(m.created_at) },
         siteUrl: getSiteUrl() || 'https://www.cantame.app',
       },
       // Same text to the same message is the same email: a double click or a

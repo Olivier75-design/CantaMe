@@ -146,6 +146,8 @@ There is **no real mailbox** — `hello@cantame.app` never existed and was remov
 
 Admin → **Messages** tab lists them (`GET /api/admin/contact`, `PATCH /api/admin/contact/[id]`), with an unread badge. **Reply** opens a box under the message; `POST /api/admin/contact/[id]/reply` sends it through Resend from `support@cantame.app` (signature + the customer's message quoted, in the customer's `locale`), then marks the message `replied`. It used to be a `mailto:`, which exposed the admin's personal address. The app still receives no mail: customers' answers go to `support@` and are read in Resend (Emails → Receiving, with *Enable Receiving* on for the domain). Copies of sent replies live in Resend → Emails; nothing is stored in the DB.
 
+Admin → **Orders** has a **✉️ Message** button on every row (blue on `PENDING_PAYMENT`, which also got its own status filter) for writing to customers who never got in touch — typically someone whose payment failed. `POST /api/admin/orders/[id]/message` takes `{ subject, message }`, reads the recipient from the order's `client_email` server-side, and writes in the song's `language`. Same sender, frame and signature as a reply (`sendSupportEmail()`), without the quote. The "✓ Sent" marker only lasts for the admin's session.
+
 `src/lib/contact.ts` is **server-only** (it imports `getSupabaseServer()`); the shared `CONTACT_SUBJECTS` whitelist lives in `lib/constants.ts` so the client modal can render it — same split as `promo.ts` / `promoClient.ts`.
 
 ### Constants
