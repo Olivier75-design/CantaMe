@@ -132,9 +132,11 @@ export default function CreatePage() {
                 >
                   <span className="selection-card-icon">{style.icon}</span>
                   <span className="selection-card-name">{t(style.nameKey)}</span>
-                  <div className="selection-card-mini-player">
-                    <AudioPlayer variant="mini" showVisualizer />
-                  </div>
+                  {style.audioUrl && (
+                    <div className="selection-card-mini-player">
+                      <AudioPlayer src={style.audioUrl} variant="mini" showVisualizer />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

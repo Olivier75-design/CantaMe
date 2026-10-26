@@ -97,6 +97,7 @@ export default function AudioPlayer({
         <button
           className="audio-player-play"
           onClick={togglePlay}
+          disabled={!src}
           style={{ width: 32, height: 32, fontSize: '0.7rem' }}
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
@@ -121,6 +122,7 @@ export default function AudioPlayer({
       <button
         className="audio-player-play"
         onClick={togglePlay}
+        disabled={!src}
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         {isPlaying ? '⏸' : '▶'}

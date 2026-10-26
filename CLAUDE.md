@@ -151,13 +151,17 @@ Admin → **Orders** has a **✉️ Message** button on every row (blue on `PEND
 `src/lib/contact.ts` is **server-only** (it imports `getSupabaseServer()`); the shared `CONTACT_SUBJECTS` whitelist lives in `lib/constants.ts` so the client modal can render it — same split as `promo.ts` / `promoClient.ts`.
 
 ### Constants
-`src/lib/constants.ts` — `OCCASIONS`, `MUSIC_STYLES` (id/icon/color/`nameKey`), `OCCASION_STYLE_MAP` ("Surprise Me"), `VOICE_ICONS` (shared by both wizards), `CREDITS` (pricing/packs — replaces the old subscription tiers), `GALLERY_SAMPLES`. Note `MUSIC_STYLES[].audioUrl` still points at **SoundHelix placeholder MP3s**, not real style samples.
+`src/lib/constants.ts` — `OCCASIONS`, `MUSIC_STYLES` (id/icon/color/`nameKey`), `OCCASION_STYLE_MAP` ("Surprise Me"), `VOICE_ICONS` (shared by both wizards), `CREDITS` (pricing/packs — replaces the old subscription tiers), `GALLERY_SAMPLES`. `MUSIC_STYLES[].audioUrl` is the style's ▶ sample: a gallery demo (`/audio/gN.mp3`) in that style, or `''` when there is none (corridos, merengue) — the card then shows no player. They used to be SoundHelix placeholders (▶ on Bachata played unrelated electronic music).
+
+**Two style lists.** `/create` reads `MUSIC_STYLES`; the home wizard reads the **`music_styles` table** via `/api/styles` (editable in Admin → Styles), so its samples and its list are data, not code. A style id that is not a key of `STYLE_PROMPTS` (`musicPrompts.ts`) still generates — as a **bachata**, the fallback — so never add a style row without its prompt. Five French styles (afroFr, chanson, rumbaCongo, varietePop, zouk) were once added to the table by work that was later discarded; their samples (`/audio/g13–g17`) were never committed.
 
 ## User flow & order lifecycle
 
 **Two wizards exist and must be kept in step** — the home one (`/`, scrolls to `#studio`, steps 1-5 in `page.tsx`) and the multi-page `/create` → `/create/details` → `/create/preview`. They are near-duplicates, and drift between them has caused real bugs (the voice picker existed in only one of them). Header "Create My Song" and the dashboard both link to `/create`.
 
-Flow: sign in → brief → editable lyrics (`/api/generate-lyrics`, home wizard only) → **the song itself** (`/api/generate-song`, which saves the order server-side, locked) → unlock with credits (buying a pack first if needed, see *After a purchase*) → play / download / share. `/create/details` hands the brief to `/create/preview` in `sessionStorage['ct-order']`, and that is its only job.
+Flow: sign in → brief → **editable lyrics** (`/api/generate-lyrics`) → **the song itself, composed from those exact lyrics** (`/api/generate-song` with `lyrics` + `title`; it saves the order server-side, locked) → unlock with credits (buying a pack first if needed, see *After a purchase*) → play / download / share. Both wizards have the lyrics step: `/create/details` hands the brief to `/create/preview` in `sessionStorage['ct-order']`, and the preview page writes the lyrics on mount and composes only when the customer clicks *Compose my song* — so a reload costs a new draft, not a second MiniMax song. Its *Back* returns to `/create/details`, which refills the form from `ct-order`.
+
+Every call to `/api/generate-lyrics` must carry `authHeaders()`: the home wizard once sent none, so from 2026-08-16 to 2026-10-26 its lyrics step failed with `auth_required` for everyone.
 
 The order exists from generation on, so **nothing downstream turns a brief into an order**. The dashboard just deletes any leftover `ct-order`: it used to `POST /api/orders` with it (a locked duplicate of a song already in the library) or, after a payment, send the user back to `/create/preview` — which composes on mount, so it billed MiniMax for a second song instead of unlocking the first. "Save my song" in both wizards only opens the dashboard. `POST /api/orders` still exists (status **`READY`** when `audioUrl` points at our own bucket, else `PENDING_PAYMENT`) but no current flow calls it.
 
@@ -170,7 +174,9 @@ Order status: `PENDING_PAYMENT`, `IN_PRODUCTION`, `READY`, `REVISION_REQUESTED`,
 **Known gap — credits are not atomic.** The balance lives in `app_metadata` and is read-modify-written (`credits.ts`), so two concurrent spends can both pass on one balance (e.g. a scripted double unlock). Fixing it needs a DB-side balance with a locking RPC.
 
 ### Front-end gotchas that cost real debugging time
-- **Generated MP3s report `duration = Infinity`** until the browser scans to the end, so timers show `0:00 / 0:00` and progress never advances. The dashboard player probes the real duration by seeking past the end once, then resetting (see `playIntentRef` / `probing`).
+- **Never render `<AudioPlayer>` without a source.** A locked song has no `audioUrl` on the client, and an empty player reads `0:00 / 0:00` with a ▶ that does nothing — customers took it for a failed song and composed the same one again (one generated three). Both wizards render the player only once unlocked; `AudioPlayer` also disables its button when `src` is missing.
+- **A locked song in the dashboard is unlocked from its row** (`🔓 Unlock my song` in `SongRow`). The row's ▶ is disabled for locked songs and the now-playing panel only ever receives playable ones, so before that button existed a locked song could not be unlocked from the dashboard at all — the very page the order page, the preview's "Save to my songs" and the payment-failed emails send customers to.
+- **Generated MP3s may report `duration = Infinity`** until the browser scans to the end (Chrome reported finite durations for every song in 2026-10). The dashboard player probes the real duration by seeking past the end once, then resetting (see `playIntentRef` / `probing`).
 - **The song-language picker must stay above the "Suggest memory/message" fields.** Those suggestions are pulled from `TEMPLATES` in the *currently selected* language, so a picker placed after them yields suggestions in the wrong language.
 
 ## Vercel deployment gotchas (all have caused production 404s)

@@ -231,11 +231,28 @@ export default function DashboardPage() {
   // URL until credits have been spent on it.
   const audioOf = (o: Order) => (o.unlocked === false ? undefined : (o.audioUrl || o.audio_url));
 
+  const [unlockingId, setUnlockingId] = useState<string | null>(null);
   const unlockOrder = async (id: string) => {
-    const res = await fetch(`/api/orders/${id}/unlock`, { method: 'POST', headers: await authHeaders() });
-    // Out of credits: remember which song to unlock once the pack is paid for.
-    if (res.status === 402) { sessionStorage.setItem('ct-unlock', id); router.push('/checkout'); return; }
-    if (res.ok) refetchOrders();
+    setUnlockingId(id);
+    try {
+      const res = await fetch(`/api/orders/${id}/unlock`, { method: 'POST', headers: await authHeaders() });
+      // Out of credits: remember which song to unlock once the pack is paid for.
+      if (res.status === 402) { sessionStorage.setItem('ct-unlock', id); router.push('/checkout'); return; }
+      if (!res.ok) return;
+      const data = await res.json();
+      if (typeof data.credits === 'number') setCredits(data.credits);
+      // They just paid to hear it: swap in the unlocked song and play it.
+      const o = orders.find((x) => x.id === id);
+      if (o && data.audioUrl) {
+        const opened = { ...o, unlocked: true, status: 'READY', audioUrl: data.audioUrl, audio_url: data.audioUrl };
+        setOrders((prev) => prev.map((x) => (x.id === id ? opened : x)));
+        playSong(opened);
+      } else {
+        refetchOrders();
+      }
+    } finally {
+      setUnlockingId(null);
+    }
   };
   const nameOf = (o: Order) => o.recipientName || o.recipient_name || '—';
   const dateRaw = (o: Order) => o.createdAt || o.created_at || '';
@@ -250,7 +267,7 @@ export default function DashboardPage() {
     const a = audioRef.current;
     const src = audioOf(o);
     if (!a || !src) return;
-    if (nowPlaying?.id === o.id) {
+    if (nowPlaying?.id === o.id && a.getAttribute('src') === src) {
       if (a.paused) { playIntentRef.current = true; a.play().catch(() => {}); }
       else { playIntentRef.current = false; a.pause(); }
       return;
@@ -379,12 +396,13 @@ export default function DashboardPage() {
     const st = styleInfo(o);
     const audio = audioOf(o);
     const generating = o.status === 'IN_PRODUCTION' && !audio;
+    const locked = o.unlocked === false && !generating;
     const active = nowPlaying?.id === o.id;
     const playingThis = active && isPlaying;
     return (
       <div className={`song-item ${active ? 'active' : ''} ${generating ? 'is-generating' : ''}`}>
-        <button className="song-play" onClick={() => playSong(o)} disabled={!audio} aria-label="Play">
-          {generating ? <span className="spinner spinner-sm" /> : playingThis ? '❚❚' : '▶'}
+        <button className="song-play" onClick={() => playSong(o)} disabled={!audio} aria-label={locked ? 'Locked' : 'Play'}>
+          {generating ? <span className="spinner spinner-sm" /> : locked ? '🔒' : playingThis ? '❚❚' : '▶'}
         </button>
         <div className="song-info">
           <div className="song-title-row">
@@ -411,6 +429,13 @@ export default function DashboardPage() {
             <span className="ico" style={{ opacity: 0.5, cursor: 'default' }} title={t('dashboard.generating')}>⏳</span>
           ) : (
             <>
+              {/* The only way into a locked song: its play button is disabled
+                  and the now-playing panel only ever shows playable songs. */}
+              {locked && (
+                <button className="btn btn-primary btn-sm" onClick={() => unlockOrder(o.id)} disabled={unlockingId === o.id}>
+                  {unlockingId === o.id ? '…' : `🔓 ${t('credits.useOneCredit')}`}
+                </button>
+              )}
               <Link className="ico" href={`/order/${o.id}/share`} title={t('dashboard.share')}>🔗</Link>
               {audio && <a className="ico" href={`/api/orders/${o.id}/download`} title={t('dashboard.download')}>⬇</a>}
               <Link className="ico" href={`/order/${o.id}/review`} title={t('dashboard.revise')}>⋯</Link>

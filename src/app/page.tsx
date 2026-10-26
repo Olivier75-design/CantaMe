@@ -207,12 +207,18 @@ export default function HomeDashboardPage() {
     setLyricsError(null);
     setIsGeneratingLyrics(true);
     try {
+      // The route 401s without the bearer token — leaving it off broke this
+      // whole step for every signed-in customer.
       const res = await fetch('/api/generate-lyrics', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify(briefBody()),
       });
       const data = await res.json();
+      if (res.status === 401) {
+        router.push('/signin?mode=signup&next=/create');
+        return;
+      }
       if (!res.ok) throw new Error(data?.error || 'Error');
       setLyrics(data.lyrics || '');
       setLyricsTitle(data.title || '');
@@ -574,9 +580,11 @@ export default function HomeDashboardPage() {
                   <span className="selection-card-name">
                     {t('hero.stats') === 'songs created' ? style.nameEn : style.nameEs}
                   </span>
-                  <div className="selection-card-mini-player">
-                    <AudioPlayer src={style.audioUrl} variant="mini" showVisualizer />
-                  </div>
+                  {style.audioUrl && (
+                    <div className="selection-card-mini-player">
+                      <AudioPlayer src={style.audioUrl} variant="mini" showVisualizer />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -866,12 +874,17 @@ export default function HomeDashboardPage() {
                   <h3 className="heading-md mb-md">{t('preview.title')}</h3>
                   <p className="body-sm mb-lg">{t('preview.subtitle', { name: recipientName })}</p>
 
-                  <AudioPlayer
-                    src={generatedAudioUrl || undefined}
-                    variant="large"
-                    title={`${(isEn ? musicStyles.find((s) => s.id === selectedStyle)?.nameEn : musicStyles.find((s) => s.id === selectedStyle)?.nameEs) || selectedStyle} · ${recipientName}`}
-                    showVisualizer
-                  />
+                  {/* No player until there is audio: an empty one reads
+                      0:00 / 0:00 and its ▶ does nothing, so customers took a
+                      locked song for a failed one and composed it again. */}
+                  {generatedAudioUrl && (
+                    <AudioPlayer
+                      src={generatedAudioUrl}
+                      variant="large"
+                      title={`${(isEn ? musicStyles.find((s) => s.id === selectedStyle)?.nameEn : musicStyles.find((s) => s.id === selectedStyle)?.nameEs) || selectedStyle} · ${recipientName}`}
+                      showVisualizer
+                    />
+                  )}
 
                   {/* Song composed but not paid for: no player, no audio URL. */}
                   {generatedOrderId && !generatedAudioUrl && (

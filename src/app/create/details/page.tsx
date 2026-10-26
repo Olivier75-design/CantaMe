@@ -15,15 +15,29 @@ function DetailsForm() {
 
   const isEn = t('nav.login') === 'Log in';
 
-  const [form, setForm] = useState({
-    recipientName: '',
-    relation: '',
-    anecdote1: '',
-    anecdote2: '',
-    message: '',
-    tone: 'emotional',
-    songLanguage: 'es',
-    voiceGender: 'female',
+  const [form, setForm] = useState(() => {
+    const blank = {
+      recipientName: '',
+      relation: '',
+      anecdote1: '',
+      anecdote2: '',
+      message: '',
+      tone: 'emotional',
+      songLanguage: 'es',
+      voiceGender: 'female',
+    };
+    // Coming back from the lyrics step: refill the story instead of starting
+    // over. (useSearchParams keeps this form client-rendered, so the browser
+    // storage is there.)
+    if (typeof window === 'undefined') return blank;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('ct-order') || 'null');
+      if (!saved || saved.style !== style) return blank;
+      for (const k of Object.keys(blank) as (keyof typeof blank)[]) {
+        if (typeof saved[k] === 'string') blank[k] = saved[k];
+      }
+    } catch { /* no draft */ }
+    return blank;
   });
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -67,7 +81,7 @@ function DetailsForm() {
 
     setIsGenerating(true);
 
-    // Store the brief; the preview page runs the REAL generation (lyrics + music).
+    // Store the brief; the preview page writes the lyrics, then composes from them.
     sessionStorage.setItem(
       'ct-order',
       JSON.stringify({

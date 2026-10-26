@@ -28,12 +28,20 @@ export default function PreviewPage() {
   const isEn = lang === 'en';
 
   const [orderData, setOrderData] = useState<OrderData | null>(null);
-  const [isGenerating, setIsGenerating] = useState(true);
+
+  // Step 1 — editable lyrics, written before any music (same as the home wizard).
+  const [lyrics, setLyrics] = useState('');
+  const [lyricsTitle, setLyricsTitle] = useState('');
+  const [isWritingLyrics, setIsWritingLyrics] = useState(true);
+  const [lyricsError, setLyricsError] = useState<string | null>(null);
+
+  // Step 2 — the song, composed from those exact lyrics.
+  const [composeStarted, setComposeStarted] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStep, setGeneratingStep] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
-  const [lyrics, setLyrics] = useState('');
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
 
@@ -45,39 +53,65 @@ export default function PreviewPage() {
     isEn ? '✨ Polishing the final mix...' : '✨ Puliendo la mezcla final...',
   ];
 
-  // Run the real preview generation (writes lyrics + composes a short teaser).
-  const generate = useCallback(async (brief: OrderData) => {
-    setError(null);
-    setAudioUrl(null);
-    setLyrics('');
-    setGeneratingStep(0);
-    setIsGenerating(true);
+  // Write (or rewrite) the lyrics. Cheap and quick, unlike composing, so a
+  // reload of this page only costs a new draft — not a second song.
+  const requestLyrics = useCallback(async (brief: OrderData) => {
+    setLyricsError(null);
+    setIsWritingLyrics(true);
     try {
-      const res = await fetch('/api/generate-song', {
+      const res = await fetch('/api/generate-lyrics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify(brief),
       });
       const data = await res.json();
+      // Creating requires an account — the route 401s without one.
+      if (res.status === 401) {
+        router.push('/signin?mode=signup&next=/create');
+        return;
+      }
+      if (!res.ok) throw new Error(data?.error || 'Error');
+      setLyrics(data.lyrics || '');
+      setLyricsTitle(data.title || '');
+    } catch (err) {
+      setLyricsError(err instanceof Error ? err.message : t('lyrics.failed'));
+    } finally {
+      setIsWritingLyrics(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
 
-      // Creating requires an account now — the route 401s without one.
+  // Compose the music from the (possibly edited) lyrics.
+  const compose = async () => {
+    if (!orderData || !lyrics.trim()) return;
+    setError(null);
+    setAudioUrl(null);
+    setGeneratingStep(0);
+    setComposeStarted(true);
+    setIsGenerating(true);
+    try {
+      const res = await fetch('/api/generate-song', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ ...orderData, lyrics, title: lyricsTitle }),
+      });
+      const data = await res.json();
+
       if (res.status === 401) {
         router.push('/signin?mode=signup&next=/create');
         return;
       }
       if (!res.ok) throw new Error(data?.error || 'Error');
 
-      // Comes back LOCKED: an order id and the lyrics, never the audio URL.
+      // Comes back LOCKED: an order id, never the audio URL.
       // Credits are spent to unlock it, not to generate it.
       setOrderId(data.orderId);
-      setLyrics(data.lyrics || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : (isEn ? 'Generation failed' : 'La generación falló'));
     } finally {
       setIsGenerating(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEn]);
+  };
 
   // Spend credits to unlock the finished song. The audio URL only comes back
   // here, after payment — before that the client never holds it.
@@ -106,7 +140,7 @@ export default function PreviewPage() {
     }
   };
 
-  // On mount: load the brief and kick off generation (once). No brief -> restart.
+  // On mount: load the brief and write the lyrics (once). No brief -> restart.
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
@@ -117,8 +151,8 @@ export default function PreviewPage() {
     }
     const brief = JSON.parse(stored) as OrderData;
     setOrderData(brief);
-    generate(brief);
-  }, [router, generate]);
+    requestLyrics(brief);
+  }, [router, requestLyrics]);
 
   // Advance the loading animation while the real generation runs (holds on last).
   useEffect(() => {
@@ -139,6 +173,8 @@ export default function PreviewPage() {
   };
 
   const recipientName = orderData?.recipientName || 'Someone Special';
+  // Back to the story form with the same occasion + style (it restores the rest).
+  const detailsHref = `/create/details?${new URLSearchParams({ occasion: orderData?.occasion || '', style: orderData?.style || '' })}`;
 
   // Playback is free for everyone, but downloading requires an account. Guests
   // go through sign-in (which also saves the song to their new library).
@@ -169,7 +205,95 @@ export default function PreviewPage() {
     }
   };
 
-  // ── Generating ─────────────────────────────────────────────
+  // ── Step 1: lyrics ─────────────────────────────────────────
+  if (!composeStarted) {
+    if (isWritingLyrics) {
+      return (
+        <div className="section">
+          <div className="container container-narrow">
+            <div className="song-loader animate-fade-in">
+              <div className="song-loader-eq" aria-hidden="true">
+                <span /><span /><span /><span /><span /><span /><span />
+              </div>
+              <h3 className="heading-md song-loader-title">✍️ {t('lyrics.writing')}</h3>
+              <div className="song-loader-track" aria-hidden="true" />
+              <p className="song-loader-hint">
+                {isEn
+                  ? '⏳ Crafting personalized lyrics from your story…'
+                  : '⏳ Creando letras personalizadas a partir de tu historia…'}
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (lyricsError) {
+      return (
+        <div className="section">
+          <div className="container container-narrow">
+            <div className="card text-center" style={{ maxWidth: 540, margin: '0 auto' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: 'var(--space-sm)' }}>⚠️</div>
+              <h3 className="heading-md mb-md">{t('lyrics.failed')}</h3>
+              <p className="body-sm mb-lg" style={{ color: 'var(--accent-primary)' }}>{lyricsError}</p>
+              <div className="flex gap-md justify-center" style={{ flexWrap: 'wrap' }}>
+                <button className="btn btn-outline" onClick={() => orderData && requestLyrics(orderData)}>
+                  🔄 {t('lyrics.regenerate')}
+                </button>
+                <button className="btn btn-primary" onClick={() => router.push(detailsHref)}>
+                  ← {t('common.back')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="section">
+        <div className="container container-narrow">
+          <div className="steps">
+            <div className="step-dot completed" />
+            <div className="step-dot completed" />
+            <div className="step-dot completed" />
+            <div className="step-dot active" />
+          </div>
+          <div className="card animate-fade-in-up" style={{ maxWidth: 640, margin: '0 auto' }}>
+            <div className="text-center mb-lg">
+              <div style={{ fontSize: '2.5rem' }}>📝</div>
+              <h3 className="heading-md mb-sm">{t('lyrics.title')}</h3>
+              <p className="body-sm" style={{ color: 'var(--text-muted)' }}>{t('lyrics.subtitle')}</p>
+            </div>
+            <div className="input-group">
+              <label className="input-label">{t('lyrics.label')}</label>
+              <textarea
+                className="input-field lyrics-textarea"
+                value={lyrics}
+                onChange={(e) => setLyrics(e.target.value)}
+                style={{ minHeight: 300, lineHeight: 1.7, fontFamily: 'inherit' }}
+              />
+            </div>
+            <div className="flex gap-md mt-lg" style={{ flexWrap: 'wrap' }}>
+              <button className="btn btn-outline" onClick={() => orderData && requestLyrics(orderData)}>
+                🔄 {t('lyrics.regenerate')}
+              </button>
+              <button className="btn btn-primary" style={{ flex: 1, minWidth: 180 }} onClick={compose} disabled={!lyrics.trim()}>
+                🎶 {t('lyrics.compose')}
+              </button>
+            </div>
+            <div className="text-center mt-md">
+              <button className="btn btn-ghost btn-sm" onClick={() => router.push(detailsHref)}>
+                ← {t('common.back')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 2: composing ──────────────────────────────────────
   if (isGenerating) {
     return (
       <div className="section">
@@ -203,7 +327,7 @@ export default function PreviewPage() {
   }
 
   // ── Error ──────────────────────────────────────────────────
-  if (error) {
+  if (error && !orderId) {
     return (
       <div className="section">
         <div className="container container-narrow">
@@ -212,11 +336,11 @@ export default function PreviewPage() {
             <h3 className="heading-md mb-md">{isEn ? 'Generation failed' : 'La generación falló'}</h3>
             <p className="body-sm mb-lg" style={{ color: 'var(--accent-primary)' }}>{error}</p>
             <div className="flex gap-md justify-center" style={{ flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" onClick={() => orderData && generate(orderData)}>
-                🔄 {isEn ? 'Try again' : 'Reintentar'}
+              <button className="btn btn-primary" onClick={compose}>
+                🔄 {t('lyrics.compose')}
               </button>
-              <button className="btn btn-outline" onClick={() => router.push('/create')}>
-                ← {t('common.back')}
+              <button className="btn btn-outline" onClick={() => { setError(null); setComposeStarted(false); }}>
+                ← {t('lyrics.backToLyrics')}
               </button>
             </div>
           </div>
@@ -225,7 +349,7 @@ export default function PreviewPage() {
     );
   }
 
-  // ── Preview + lyrics + credit CTA ──────────────────────────
+  // ── The song + lyrics + credit CTA ─────────────────────────
   return (
     <div className="section">
       <div className="container">
@@ -243,7 +367,7 @@ export default function PreviewPage() {
             <p className="body-lg">{t('preview.subtitle', { name: recipientName })}</p>
           </div>
 
-          {/* Preview player */}
+          {/* Player */}
           <div
             className="card"
             style={{
@@ -258,12 +382,17 @@ export default function PreviewPage() {
             <h3 className="heading-md mb-lg">
               {isEn ? 'Song for' : 'Canción para'} {recipientName}
             </h3>
-            <AudioPlayer
-              src={audioUrl || undefined}
-              variant="large"
-              title={`${orderData?.style || 'Bachata'} · ${recipientName}`}
-              showVisualizer
-            />
+            {/* No player until there is audio: an empty one reads 0:00 / 0:00
+                and its ▶ does nothing, so customers took a locked song for a
+                failed one and composed it again. */}
+            {audioUrl && (
+              <AudioPlayer
+                src={audioUrl}
+                variant="large"
+                title={`${orderData?.style || 'Bachata'} · ${recipientName}`}
+                showVisualizer
+              />
+            )}
             {orderId && !audioUrl && (
               <div className="card mt-lg" style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '2.5rem' }}>🔒</div>
@@ -280,6 +409,9 @@ export default function PreviewPage() {
                     ? (isEn ? 'Unlocking…' : 'Desbloqueando…')
                     : (isEn ? '🔓 Unlock my song' : '🔓 Desbloquear mi canción')}
                 </button>
+                {error && (
+                  <p className="body-sm mt-md" style={{ color: 'var(--accent-primary)' }}>{error}</p>
+                )}
               </div>
             )}
 
@@ -292,6 +424,9 @@ export default function PreviewPage() {
                   <p className="body-sm mt-sm" style={{ color: 'var(--text-muted)' }}>
                     {t('preview.downloadHint')}
                   </p>
+                )}
+                {error && (
+                  <p className="body-sm mt-sm" style={{ color: 'var(--accent-primary)' }}>{error}</p>
                 )}
                 <div className="mt-lg">
                   <SongRating
@@ -309,7 +444,7 @@ export default function PreviewPage() {
             </p>
           </div>
 
-          {/* Generated lyrics */}
+          {/* The lyrics the song was composed from */}
           {lyrics && (
             <div className="card" style={{ maxWidth: 600, margin: '0 auto var(--space-2xl)' }}>
               <div className="text-center mb-md">

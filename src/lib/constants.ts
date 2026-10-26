@@ -43,17 +43,20 @@ export const OCCASIONS: Occasion[] = [
   { id: 'otro', icon: '🎵', nameKey: 'occasions.otro' },
 ];
 
+// audioUrl = a real CantaMe song in that style (the gallery demos), or '' when
+// there is none yet. These were SoundHelix placeholders: ▶ on "Bachata" played
+// unrelated electronic music.
 export const MUSIC_STYLES: MusicStyle[] = [
-  { id: 'bachata', icon: '💃', nameKey: 'styles.bachata', color: '#E040A0', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
-  { id: 'cumbia', icon: '🥁', nameKey: 'styles.cumbia', color: '#FFD700', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
-  { id: 'reggaeton', icon: '🔥', nameKey: 'styles.reggaeton', color: '#FF8906', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
-  { id: 'corridos', icon: '🤠', nameKey: 'styles.corridos', color: '#2CB67D', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' },
-  { id: 'vallenato', icon: '🪗', nameKey: 'styles.vallenato', color: '#7F5AF0', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3' },
-  { id: 'salsa', icon: '🎺', nameKey: 'styles.salsa', color: '#F25F4C', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3' },
-  { id: 'ranchera', icon: '🎸', nameKey: 'styles.ranchera', color: '#FF6B35', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3' },
-  { id: 'bolero', icon: '🌹', nameKey: 'styles.bolero', color: '#C850C0', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3' },
-  { id: 'merengue', icon: '🎶', nameKey: 'styles.merengue', color: '#00D2FF', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3' },
-  { id: 'balada', icon: '🎤', nameKey: 'styles.balada', color: '#A855F7', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3' },
+  { id: 'bachata', icon: '💃', nameKey: 'styles.bachata', color: '#E040A0', audioUrl: '/audio/g1.mp3' },
+  { id: 'cumbia', icon: '🥁', nameKey: 'styles.cumbia', color: '#FFD700', audioUrl: '/audio/g3.mp3' },
+  { id: 'reggaeton', icon: '🔥', nameKey: 'styles.reggaeton', color: '#FF8906', audioUrl: '/audio/g7.mp3' },
+  { id: 'corridos', icon: '🤠', nameKey: 'styles.corridos', color: '#2CB67D', audioUrl: '' },
+  { id: 'vallenato', icon: '🪗', nameKey: 'styles.vallenato', color: '#7F5AF0', audioUrl: '/audio/g10.mp3' },
+  { id: 'salsa', icon: '🎺', nameKey: 'styles.salsa', color: '#F25F4C', audioUrl: '/audio/g8.mp3' },
+  { id: 'ranchera', icon: '🎸', nameKey: 'styles.ranchera', color: '#FF6B35', audioUrl: '/audio/g4.mp3' },
+  { id: 'bolero', icon: '🌹', nameKey: 'styles.bolero', color: '#C850C0', audioUrl: '/audio/g2.mp3' },
+  { id: 'merengue', icon: '🎶', nameKey: 'styles.merengue', color: '#00D2FF', audioUrl: '' },
+  { id: 'balada', icon: '🎤', nameKey: 'styles.balada', color: '#A855F7', audioUrl: '/audio/g5.mp3' },
 ];
 
 // Recommended style per occasion (for "Surprise Me" feature)

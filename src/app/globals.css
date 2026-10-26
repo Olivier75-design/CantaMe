@@ -623,9 +623,14 @@ select.input-field option {
   transition: all var(--transition-base);
   flex-shrink: 0;
 }
-.audio-player-play:hover {
+.audio-player-play:hover:not(:disabled) {
   transform: scale(1.08);
   box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
+}
+/* No source = nothing to play: never look like a working button. */
+.audio-player-play:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .audio-player-info {
