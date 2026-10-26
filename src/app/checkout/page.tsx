@@ -24,7 +24,7 @@ interface OrderData {
 }
 
 export default function CheckoutPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user, loading } = useAuth();
   const router = useRouter();
 
@@ -108,6 +108,7 @@ export default function CheckoutPage() {
           packId: pack.id,
           name: user?.user_metadata?.full_name || '',
           promoCode: promoCode || undefined,
+          lang,
         }),
       });
       const data = await res.json();

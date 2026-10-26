@@ -5,6 +5,9 @@
 // client redirect alone; the webhook and the callback both call creditForPayment).
 import { getSupabaseServer } from './supabase';
 import { addCredits } from './credits';
+import { CREDITS } from './constants';
+import { getSiteUrl } from './site';
+import { sendReceiptEmail } from './receiptEmail';
 
 const BASE = process.env.MONEROO_API_BASE || 'https://api.moneroo.io/v1';
 const KEY = process.env.MONEROO_SECRET_KEY;
@@ -90,5 +93,37 @@ export async function creditForPayment(paymentId: string): Promise<{ status: str
   if (!claimed) return { status: 'success' }; // already credited (or unknown id)
 
   await addCredits(claimed.user_id, claimed.credits);
+  // Only the caller that claimed the row gets here, so the receipt goes out
+  // once. A mail problem must never undo or fail a paid credit grant.
+  await sendReceipt(claimed, v.raw).catch((e) =>
+    console.error('receipt email failed:', e instanceof Error ? e.message : e),
+  );
   return { status: 'success', credited: claimed.credits };
+}
+
+type PaymentRow = { id: string; user_id: string; credits: number; amount?: number | null; promo_code?: string | null };
+type VerifiedPayment = {
+  amount?: number;
+  currency?: { code?: string };
+  processed_at?: string | null;
+  metadata?: { lang?: string };
+  capture?: { method?: { name?: string } };
+};
+
+async function sendReceipt(row: PaymentRow, raw: unknown) {
+  const p = (raw || {}) as VerifiedPayment;
+  const { data } = await getSupabaseServer().auth.admin.getUserById(row.user_id);
+  const email = data?.user?.email;
+  if (!email) return;
+  await sendReceiptEmail(email, {
+    paymentId: row.id,
+    amount: Number(p.amount ?? row.amount ?? 0),
+    currency: p.currency?.code || MONEROO_CURRENCY,
+    songs: Math.round(row.credits / CREDITS.perSong),
+    promoCode: row.promo_code,
+    method: p.capture?.method?.name,
+    paidAt: p.processed_at ? new Date(p.processed_at) : new Date(),
+    lang: p.metadata?.lang === 'en' ? 'en' : 'es',
+    siteUrl: getSiteUrl() || 'https://www.cantame.app',
+  });
 }

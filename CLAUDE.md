@@ -32,6 +32,7 @@ In `.env.local` (gitignored; `.env.example` is the authoritative list). All must
 - `MINIMAX_API_KEY`, `MINIMAX_API_HOST` — server, MiniMax **music** generation (and lyrics fallback).
 - `OPENAI_API_KEY`, `OPENAI_MODEL` — server, **lyrics** (preferred over MiniMax when set; model defaults to `gpt-4o-mini`).
 - `MONEROO_SECRET_KEY`, `MONEROO_WEBHOOK_SECRET`, `MONEROO_CURRENCY` — payments. Webhook fails **closed** if the secret is missing.
+- `RESEND_API_KEY`, `RESEND_FROM` — payment receipt emails (`lib/receiptEmail.ts`). Without the key no receipt is sent; `RESEND_FROM` defaults to `CantaMe <receipts@cantame.app>` and its domain must be verified in Resend.
 - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` — shared rate-limit store. Without them, rate limiting falls back to a weaker per-instance in-memory limiter.
 - `NEXT_PUBLIC_SITE_URL` — canonical origin for OAuth redirects (see `lib/site.ts`). No trailing slash.
 - `NEXT_PUBLIC_ADMIN_EMAILS` — comma-separated admin allowlist. **Fail closed**: empty = nobody is admin.
@@ -97,6 +98,8 @@ The bucket must have **no storage policy at all** (`supabase-setup.sql` §2 drop
 - The webhook (`/api/webhooks/moneroo`) verifies `X-Moneroo-Signature` = HMAC-SHA256(rawBody, `MONEROO_WEBHOOK_SECRET`) with `timingSafeEqual`, and **fails closed** (503) if the secret is unset. Point it at `https://www.cantame.app/...` — the apex 307-redirects to www.
 - **Moneroo rejects the whole `initialize` (422) unless every `metadata` value is a string, boolean or integer.** A `null` (no promo code) or a decimal (a promo price like 6.6) broke *every* purchase from July to October 2026; `initializePayment()` now sanitizes metadata. The top-level `amount` may be decimal, in main units ($4 = `4`).
 - **Sandbox keys (`pvk_sandbox_…`) are refused in production** (`VERCEL_ENV === 'production'`): `initializePayment()` throws, and `creditForPayment()` never credits a payment whose `environment` is `sandbox` — sandbox test numbers always succeed, so a sandbox key in prod mints real credits. Local/preview keep working on sandbox; test number `4149518161` = successful payment.
+
+**Receipt email.** `creditForPayment()` sends a CantaMe receipt through Resend right after granting credits — only the caller that claimed the row gets there, so it goes out once (the payment id is also Resend's idempotency key). It is written in `metadata.lang`, which the buy buttons pass to `/api/payments/create` and Moneroo echoes back on verify. A send failure is logged and never fails the credit grant. It deliberately carries no reply address (there is no mailbox): questions go to the site's contact form. Moneroo also emails its own receipt; its contact address is set in the Moneroo dashboard.
 
 **After a purchase** the customer must land on the song they paid for. Whoever sends a 402 unlock to `/checkout` stores the order id in `sessionStorage['ct-unlock']` (home wizard, `/create/preview`, dashboard); `/payments/callback` spends the new credits on it via `POST /api/orders/[id]/unlock`, then goes to `/dashboard?paid=1`. `/checkout`'s "use credits" button unlocks that same id. Nothing on the client creates an order or calls `/api/checkout` any more — that old path charged 20 credits for an empty duplicate order and left the real song locked.
 

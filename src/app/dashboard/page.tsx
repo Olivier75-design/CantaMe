@@ -309,6 +309,7 @@ export default function DashboardPage() {
           packId: pack.id,
           name: user.user_metadata?.full_name || '',
           promoCode: buyPromoCode || undefined,
+          lang,
         }),
       });
       const d = await r.json();

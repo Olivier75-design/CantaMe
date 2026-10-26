@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     const userId = user.id;
     const email = user.email || '';
-    const { packId, name, promoCode } = await request.json();
+    const { packId, name, promoCode, lang } = await request.json();
 
     // Price + credits are resolved server-side from the pack id (never trust the client).
     const pack = CREDITS.packs.find((p) => p.id === packId) || CREDITS.packs[0];
@@ -51,6 +51,8 @@ export async function POST(request: NextRequest) {
         amount: promo.finalPrice,
         promoCode: promo.code,
         influencer: promo.influencer,
+        // Comes back on verify: the receipt email is written in this language.
+        lang: lang === 'en' ? 'en' : 'es',
       },
     });
 
