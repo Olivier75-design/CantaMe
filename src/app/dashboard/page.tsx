@@ -8,6 +8,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { getSupabaseBrowser } from '@/lib/supabase';
 import { authHeaders } from '@/lib/authClient';
 import { validatePromo, discounted } from '@/lib/promoClient';
+import { escapeHtml } from '@/lib/html';
 import { MUSIC_STYLES, OCCASIONS, CREDITS } from '@/lib/constants';
 import SongRating from '@/components/SongRating';
 
@@ -26,6 +27,16 @@ interface Order {
   lyrics?: string;
   createdAt?: string;
   created_at?: string;
+}
+
+// A completed pack purchase, from GET /api/payments.
+interface Payment {
+  id: string;
+  createdAt: string | null;
+  songs: number;
+  amount: number | null;
+  promoCode: string | null;
+  currency: string;
 }
 
 type Tab = 'dashboard' | 'payments' | 'profile';
@@ -61,6 +72,8 @@ export default function DashboardPage() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(true);
   const [justPaid, setJustPaid] = useState(false);
 
   // Credits
@@ -156,6 +169,18 @@ export default function DashboardPage() {
         .then((r) => r.json())
         .catch(() => ({}));
       setCredits(typeof d.credits === 'number' ? d.credits : 0);
+    })();
+  }, [user]);
+
+  // Billing history = the packs actually paid for (not the songs unlocked).
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      const d = await fetch('/api/payments', { headers: await authHeaders() })
+        .then((r) => r.json())
+        .catch(() => ({}));
+      setPayments(Array.isArray(d.payments) ? d.payments : []);
+      setLoadingPayments(false);
     })();
   }, [user]);
 
@@ -294,9 +319,15 @@ export default function DashboardPage() {
   const pageClamped = Math.min(page, totalPages);
   const paged = filtered.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE);
 
-  const paid = orders.filter((o) => o.status !== 'PENDING_PAYMENT');
   const readyCount = orders.filter((o) => audioOf(o)).length;
-  const totalSpent = paid.reduce((s, o) => s + (o.price || 0), 0);
+  // Only what is known: a legacy row without an amount adds nothing, and when
+  // no row has one the total is "—" rather than a false "$0.00".
+  const knownAmounts = payments.filter((p) => p.amount !== null);
+  const totalSpent = knownAmounts.length ? knownAmounts.reduce((s, p) => s + (p.amount as number), 0) : null;
+  const money = (n: number | null) => (n === null ? '—' : `$${n.toFixed(2)}`);
+  const songsLabel = (n: number) => `${n} ${n === 1 ? t('credits.song') : t('credits.songs')}`;
+  const paymentDate = (p: Payment) =>
+    p.createdAt ? new Date(p.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
   const applyBuyPromo = async () => {
     setCheckingBuyPromo(true);
@@ -349,21 +380,21 @@ export default function DashboardPage() {
     else { setPwMsg('✅ ' + t('dashboard.passwordUpdated')); setNewPassword(''); }
   };
 
-  const openReceipt = (o: Order) => {
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Recibo · CantaMe</title>
+  // One receipt per pack purchase — the real amount charged, promo included.
+  const openReceipt = (p: Payment) => {
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${isEn ? 'Receipt' : 'Recibo'} · CantaMe</title>
       <style>body{font-family:system-ui,sans-serif;max-width:520px;margin:40px auto;color:#0f172a;padding:0 20px}
       h1{color:#2563EB;font-size:1.5rem}.row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #e2e8f0}
       .total{font-weight:800;font-size:1.2rem;border-top:2px solid #0f172a;margin-top:8px}
       .muted{color:#64748b;font-size:.85rem}button{margin-top:24px;background:#2563EB;color:#fff;border:0;padding:12px 20px;border-radius:8px;font-size:1rem;cursor:pointer}</style>
       </head><body>
       <h1>🎵 CantaMe</h1>
-      <p class="muted">${isEn ? 'Payment receipt' : 'Recibo de pago'} · ${dateOf(o)}</p>
-      <div class="row"><span>${isEn ? 'Order' : 'Pedido'}</span><span>#${o.id.slice(0, 8)}</span></div>
-      <div class="row"><span>${isEn ? 'Song for' : 'Canción para'}</span><span>${nameOf(o)}</span></div>
-      <div class="row"><span>${isEn ? 'Style' : 'Estilo'}</span><span>${styleLabel(o)}</span></div>
-      <div class="row"><span>${isEn ? 'Item' : 'Concepto'}</span><span>${isEn ? '1 song credit' : '1 crédito de canción'}</span></div>
-      <div class="row"><span>${isEn ? 'Billed to' : 'Facturado a'}</span><span>${user?.email}</span></div>
-      <div class="row total"><span>Total</span><span>$${o.price}</span></div>
+      <p class="muted">${isEn ? 'Payment receipt' : 'Recibo de pago'} · ${escapeHtml(paymentDate(p))}</p>
+      <div class="row"><span>${isEn ? 'Payment' : 'Pago'}</span><span>#${escapeHtml(p.id)}</span></div>
+      <div class="row"><span>${isEn ? 'Item' : 'Concepto'}</span><span>${escapeHtml(isEn ? `Pack of ${songsLabel(p.songs)}` : `Pack de ${songsLabel(p.songs)}`)}</span></div>
+      ${p.promoCode ? `<div class="row"><span>${isEn ? 'Promo code' : 'Código promocional'}</span><span>${escapeHtml(p.promoCode)}</span></div>` : ''}
+      <div class="row"><span>${isEn ? 'Billed to' : 'Facturado a'}</span><span>${escapeHtml(user?.email)}</span></div>
+      <div class="row total"><span>Total</span><span>${escapeHtml(money(p.amount))} ${p.amount === null ? '' : escapeHtml(p.currency)}</span></div>
       <button onclick="window.print()">${isEn ? 'Print / Save as PDF' : 'Imprimir / Guardar PDF'}</button>
       </body></html>`;
     const w = window.open('', '_blank');
@@ -702,32 +733,34 @@ export default function DashboardPage() {
                   </div>
                   <span className="side-plan">🎫 {credits ?? '—'} {t('credits.credits')}</span>
                 </div>
-                {loadingOrders ? (
+                {loadingPayments ? (
                   <div className="spinner" style={{ margin: '2rem auto' }} />
-                ) : paid.length === 0 ? (
+                ) : payments.length === 0 ? (
                   <div className="empty-inline card">🧾 {t('dashboard.noPayments')}</div>
                 ) : (
                   <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                     <div className="table-scroll">
                       <table className="dash-table dash-table--receipts">
                         <thead><tr>
-                          <th>{t('dashboard.colDate')}</th><th>{t('dashboard.colSong')}</th>
+                          <th>{t('dashboard.colDate')}</th>
                           <th>{t('dashboard.colPlan')}</th><th>{t('dashboard.colAmount')}</th>
                           <th style={{ textAlign: 'right' }}>{t('dashboard.colReceipt')}</th>
                         </tr></thead>
                         <tbody>
-                          {paid.map((o) => (
-                            <tr key={o.id}>
-                              <td><span className="cell-muted">{dateOf(o)}</span></td>
-                              <td><span className="song-cell-title">{nameOf(o)}</span></td>
-                              <td>{CREDITS.perSong} 🎵</td>
-                              <td style={{ fontWeight: 700 }}>${o.price}</td>
+                          {payments.map((p) => (
+                            <tr key={p.id}>
+                              <td><span className="cell-muted">{paymentDate(p)}</span></td>
+                              <td>
+                                🎵 {songsLabel(p.songs)}
+                                {p.promoCode && <span className="cell-muted"> · {p.promoCode}</span>}
+                              </td>
+                              <td style={{ fontWeight: 700 }}>{money(p.amount)}</td>
                               <td style={{ textAlign: 'right' }}>
-                                <button className="btn btn-outline btn-sm" onClick={() => openReceipt(o)}>🧾 {t('dashboard.downloadReceipt')}</button>
+                                <button className="btn btn-outline btn-sm" onClick={() => openReceipt(p)}>🧾 {t('dashboard.downloadReceipt')}</button>
                               </td>
                             </tr>
                           ))}
-                          <tr><td colSpan={3} style={{ fontWeight: 700 }}>{t('dashboard.statSpent')}</td><td colSpan={2} style={{ fontWeight: 800 }} className="text-gradient">${totalSpent}</td></tr>
+                          <tr><td colSpan={2} style={{ fontWeight: 700 }}>{t('dashboard.statSpent')}</td><td colSpan={2} style={{ fontWeight: 800 }} className="text-gradient">{money(totalSpent)}</td></tr>
                         </tbody>
                       </table>
                     </div>
