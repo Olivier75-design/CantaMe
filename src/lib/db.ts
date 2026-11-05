@@ -197,7 +197,11 @@ export const db = {
     let query = supabase.from('orders').select('*').order('created_at', { ascending: false });
 
     if (filter?.status) query = query.eq('status', filter.status);
-    if (filter?.email) query = query.ilike('client_email', filter.email);
+    // ilike, not eq, so the match stays case-insensitive — but `%` and `_` are
+    // LIKE wildcards and are valid in an email's local part. Unescaped, a user
+    // signed up as "%@gmail.com" passes the "your own email" check in
+    // GET /api/orders and lists every gmail customer's orders.
+    if (filter?.email) query = query.ilike('client_email', filter.email.replace(/[\\%_]/g, '\\$&'));
 
     const { data: orders, error } = await query;
     if (error) {

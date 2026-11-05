@@ -3,6 +3,7 @@ import { writeLyrics, LYRICS_PROVIDER } from '@/lib/lyrics';
 import type { SongBrief } from '@/lib/musicPrompts';
 import { rateLimit, clientIp } from '@/lib/rateLimit';
 import { getUserFromRequest } from '@/lib/admin';
+import { clampBrief, REVISION_NOTES_MAX } from '@/lib/briefInput';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,9 @@ export async function POST(request: NextRequest) {
     if (!(await rateLimit(`lyrics:${clientIp(request)}`, 12, 60))) {
       return NextResponse.json({ error: 'Too many requests. Please slow down.' }, { status: 429 });
     }
-    const body = await request.json();
+    const raw = await request.json();
+    // Known fields only, each length-bounded: they all go into the paid prompt.
+    const body = clampBrief(raw);
     if (!body.recipientName || !body.style) {
       return NextResponse.json({ error: 'recipientName et style sont requis.' }, { status: 400 });
     }
@@ -38,8 +41,10 @@ export async function POST(request: NextRequest) {
       tone: body.tone,
       voiceGender: body.voiceGender,
     };
+    const revisionNotes =
+      typeof raw?.revisionNotes === 'string' ? raw.revisionNotes.slice(0, REVISION_NOTES_MAX) : undefined;
 
-    const { title, lyrics } = await writeLyrics(brief, body.songLanguage || 'es', body.revisionNotes);
+    const { title, lyrics } = await writeLyrics(brief, body.songLanguage || 'es', revisionNotes);
     return NextResponse.json({ title, lyrics, provider: LYRICS_PROVIDER });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Lyrics generation failed';

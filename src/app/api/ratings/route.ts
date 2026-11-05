@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { rateLimit, clientIp } from '@/lib/rateLimit';
 import { getUserFromRequest } from '@/lib/admin';
 import { saveRating, isValidRating } from '@/lib/ratings';
+import { getSupabaseServer } from '@/lib/supabase';
 
-// Public: the customer rates the song they just heard. Guests rate too — they
-// generate songs, so excluding them would throw away most of the signal.
+// The customer rates a song of their own they just heard (signed in, owner only).
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -28,23 +28,39 @@ export async function POST(request: Request) {
   // free-text dumping ground and the stats stop meaning anything.
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const audioUrl = typeof body.audioUrl === 'string' ? body.audioUrl : '';
-  if (audioUrl && !audioUrl.startsWith(`${base.replace(/\/$/, '')}/storage/v1/object/public/songs/`)) {
+  if (!audioUrl || !audioUrl.startsWith(`${base.replace(/\/$/, '')}/storage/v1/object/public/songs/`)) {
     return NextResponse.json({ error: 'invalid_audio_url' }, { status: 400 });
   }
 
-  const str = (v: unknown, max = 40) => (typeof v === 'string' ? v.slice(0, max) : null);
+  // Only the song's owner may rate it. Votes upsert on audio_url, and the
+  // landing page shows featured songs only while their vote is 👍 — so when
+  // anyone could post, any visitor could flip a featured song's public URL to
+  // 👎 and pull it off the landing page (or skew Admin → Quality). Guests no
+  // longer generate songs, so this costs no real signal.
   const user = await getUserFromRequest(request);
+  if (!user) return NextResponse.json({ error: 'auth_required' }, { status: 401 });
+
+  const { data: owned } = await getSupabaseServer()
+    .from('orders')
+    .select('id')
+    .eq('audio_url', audioUrl)
+    .eq('user_id', user.id)
+    .limit(1)
+    .maybeSingle();
+  if (!owned) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+
+  const str = (v: unknown, max = 40) => (typeof v === 'string' ? v.slice(0, max) : null);
 
   const ok = await saveRating({
     rating: body.rating,
-    audioUrl: audioUrl || null,
-    orderId: str(body.orderId, 64),
+    audioUrl,
+    orderId: owned.id as string,
     style: str(body.style),
     tone: str(body.tone),
     voiceGender: str(body.voiceGender),
     occasion: str(body.occasion),
     language: str(body.language, 8),
-    userId: user?.id ?? null,
+    userId: user.id,
     ip: clientIp(request),
   });
 

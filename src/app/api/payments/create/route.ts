@@ -69,8 +69,14 @@ export async function POST(request: NextRequest) {
     });
     if (error) {
       const retry = await supabase.from('payments').insert(core);
-      if (retry.error) console.error('payments insert failed:', retry.error.message);
-      else console.warn('payments: promo/amount columns missing — apply the migration to track them.');
+      if (retry.error) {
+        // Without this row creditForPayment() has nothing to claim: the
+        // customer would pay and never receive the credits. Better to stop
+        // here than to hand them a checkout link.
+        console.error('payments insert failed:', retry.error.message);
+        return NextResponse.json({ error: 'Could not start payment. Please try again.' }, { status: 500 });
+      }
+      console.warn('payments: promo/amount columns missing — apply the migration to track them.');
     }
 
     return NextResponse.json({ checkoutUrl, paymentId: id });

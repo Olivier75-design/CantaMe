@@ -6,6 +6,7 @@ import { CREDITS } from '@/lib/constants';
 import { verifyAdminRequest, getUserFromRequest } from '@/lib/admin';
 import { rateLimit } from '@/lib/rateLimit';
 import { hideLockedAudio, publicOrderView } from '@/lib/orderAccess';
+import { REVISION_NOTES_MAX } from '@/lib/briefInput';
 
 // Revisions regenerate the song on the spot -> Node runtime, allow a few minutes.
 export const runtime = 'nodejs';
@@ -74,8 +75,10 @@ export async function PUT(
       }
 
       // Fallback: no preview audio on the order (legacy/edge) -> generate now.
-      if (!(await rateLimit(`gen:${user.id}`, 20, 60))) {
-        return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+      // Uncharged, so it shares /api/generate-song's per-account budget — its
+      // own 20/minute limit used to be a way around that one.
+      if (!(await rateLimit(`gensong:user:${user.id}`, 10, 3600))) {
+        return NextResponse.json({ error: 'too_many_songs' }, { status: 429 });
       }
 
       let anecdote1 = '';
@@ -130,7 +133,8 @@ export async function PUT(
         return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
       }
 
-      const notes: string = body.notes || '';
+      // Bounded: the notes go into the paid lyrics prompt and the revisions row.
+      const notes: string = typeof body.notes === 'string' ? body.notes.slice(0, REVISION_NOTES_MAX) : '';
 
       // Revisions cost 1 credit. Charge the (verified) owner before regenerating.
       const ownerId = order.user_id || order.userId;

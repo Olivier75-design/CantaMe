@@ -3,52 +3,11 @@ import { db } from '@/lib/db';
 import { getUserFromRequest, isAdminEmail } from '@/lib/admin';
 import { hideLockedAudio } from '@/lib/orderAccess';
 
-// Create an order. Identity (owner id + email) is taken from the authenticated
-// session, never from the body — otherwise anyone could create orders in
-// another user's name.
-export async function POST(request: NextRequest) {
-  try {
-    const user = await getUserFromRequest(request);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const body = await request.json();
-
-    // A song is composed BEFORE the order exists (generation is the metered
-    // step), so an order that already carries its audio is READY on creation.
-    // The URL must be one of ours — never trust an arbitrary external link.
-    const base = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
-    const ownAudio =
-      typeof body.audioUrl === 'string' &&
-      !!base &&
-      body.audioUrl.startsWith(`${base}/storage/v1/object/public/songs/`);
-    const status = ownAudio ? 'READY' : 'PENDING_PAYMENT';
-
-    const order = await db.createOrder({
-      userId: user.id,
-      clientEmail: user.email || '',
-      recipientName: body.recipientName || '',
-      relation: body.relation || '',
-      occasion: body.occasion || '',
-      style: body.style || '',
-      anecdotes: JSON.stringify([body.anecdote1, body.anecdote2].filter(Boolean)),
-      message: body.message || '',
-      tone: body.tone || 'emotional',
-      voiceGender: body.voiceGender || 'female',
-      tier: body.tier || 'basica',
-      price: body.price || 10,
-      status,
-      language: body.songLanguage || 'es',
-      audioUrl: ownAudio ? body.audioUrl : undefined,
-      instrumentalUrl: body.instrumentalUrl,
-      lyrics: body.lyrics,
-    });
-
-    return NextResponse.json(order);
-  } catch (error) {
-    console.error('Error creating order:', error);
-    return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
-  }
-}
+// There is intentionally NO POST. Orders are created server-side by
+// /api/generate-song, together with the song. The old client-side POST was
+// called by no flow any more, had no rate limit, and minted audio-less orders
+// that /api/orders/[id] generate_full would then compose for free — an
+// unbounded MiniMax bill around the per-account generation limit.
 
 export async function GET(request: NextRequest) {
   try {

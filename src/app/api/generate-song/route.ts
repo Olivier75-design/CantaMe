@@ -3,6 +3,7 @@ import { generateSongFile, type GenerateInput } from '@/lib/generateSong';
 import { rateLimit, clientIp } from '@/lib/rateLimit';
 import { getUserFromRequest } from '@/lib/admin';
 import { db } from '@/lib/db';
+import { clampBrief } from '@/lib/briefInput';
 
 // Writes files + uses Node APIs -> Node.js runtime. Generation takes a couple of minutes.
 export const runtime = 'nodejs';
@@ -37,7 +38,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'too_many_songs' }, { status: 429 });
     }
 
-    const body = (await request.json()) as GenerateInput;
+    // Known fields only, each length-bounded: they all feed paid prompts.
+    const body: GenerateInput = clampBrief(await request.json());
     if (!body.recipientName || !body.style) {
       return NextResponse.json({ error: 'recipientName et style sont requis.' }, { status: 400 });
     }

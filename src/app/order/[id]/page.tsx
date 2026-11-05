@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { MUSIC_STYLES, OCCASIONS, GALLERY_SAMPLES } from '@/lib/constants';
 import AudioPlayer from '@/components/AudioPlayer';
+import { escapeHtml } from '@/lib/html';
 
 interface OrderData {
   id: string;
@@ -80,7 +81,10 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
 
   // Print the song as a giftable card (title, recipient, lyrics) -> Save as PDF.
   const printCard = () => {
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${name} — CantaMe</title>
+    // Everything below comes from the order, which the song's creator wrote —
+    // and this page is the public share link. Escape it all (see lib/html.ts).
+    const e = escapeHtml;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${e(name)} — CantaMe</title>
       <style>body{font-family:Georgia,serif;max-width:600px;margin:40px auto;color:#0f172a;padding:0 24px;text-align:center}
       .badge{display:inline-block;background:#2563EB;color:#fff;font-family:system-ui;font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:5px 12px;border-radius:99px}
       h1{font-size:2rem;margin:16px 0 4px}.sub{color:#64748b;font-family:system-ui}
@@ -88,11 +92,11 @@ export default function OrderPage({ params }: { params: Promise<{ id: string }> 
       .foot{color:#94a3b8;font-family:system-ui;font-size:.8rem}
       button{margin-top:20px;background:#2563EB;color:#fff;border:0;padding:12px 22px;border-radius:10px;font-size:1rem;cursor:pointer;font-family:system-ui}</style>
       </head><body>
-      <span class="badge">${occLabel} · ${styleLabel}</span>
-      <h1>${isEn ? 'For' : 'Para'} ${name}</h1>
+      <span class="badge">${e(occLabel)} · ${e(styleLabel)}</span>
+      <h1>${isEn ? 'For' : 'Para'} ${e(name)}</h1>
       <p class="sub">${isEn ? 'A song made with love on CantaMe' : 'Una canción hecha con amor en CantaMe'}</p>
-      <pre>${cleanLyrics || (isEn ? 'Play the song to hear it 🎵' : 'Reproduce la canción para escucharla 🎵')}</pre>
-      <p class="foot">${shareUrl}</p>
+      <pre>${e(cleanLyrics) || (isEn ? 'Play the song to hear it 🎵' : 'Reproduce la canción para escucharla 🎵')}</pre>
+      <p class="foot">${e(shareUrl)}</p>
       <button onclick="window.print()">${isEn ? 'Print / Save as PDF' : 'Imprimir / Guardar PDF'}</button>
       </body></html>`;
     const w = window.open('', '_blank');

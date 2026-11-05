@@ -62,7 +62,9 @@ export async function initializePayment(input: InitInput): Promise<{ id: string;
 
 export async function verifyPayment(id: string): Promise<{ status: string; environment?: string; raw: unknown }> {
   if (!KEY) throw new Error('MONEROO_SECRET_KEY manquant côté serveur.');
-  const res = await fetch(`${BASE}/payments/${id}/verify`, {
+  // The id reaches here from a public query string: encode it so "../" cannot
+  // point our secret-keyed request at another Moneroo endpoint.
+  const res = await fetch(`${BASE}/payments/${encodeURIComponent(id)}/verify`, {
     headers: { Authorization: `Bearer ${KEY}`, Accept: 'application/json' },
   });
   const data = await res.json().catch(() => ({}));
