@@ -385,19 +385,6 @@ export default function HomeDashboardPage() {
           <button className="btn btn-primary btn-lg hero-cta" style={{ marginBottom: 'var(--space-lg)' }} onClick={scrollToStudio}>
             {t('landing.cta')}
           </button>
-
-          <div className="social-proof">
-            <div className="avatar-stack">
-              <span className="avatar" style={{ background: '#2563EB' }}>A</span>
-              <span className="avatar" style={{ background: '#06B6D4' }}>M</span>
-              <span className="avatar" style={{ background: '#6366F1' }}>S</span>
-              <span className="avatar" style={{ background: '#3B82F6' }}>D</span>
-            </div>
-            <div className="proof-text">
-              <div className="proof-stars">★★★★★</div>
-              <div className="proof-count">{t('landing.usersCount', { count: '12,847' })}</div>
-            </div>
-          </div>
         </div>
       </section>
 
