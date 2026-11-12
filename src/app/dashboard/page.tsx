@@ -3,6 +3,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import {
+  ChevronLeft, ChevronRight, CircleCheck, CircleHelp, Disc3, Download, House, Lightbulb, Lock,
+  LogOut, Music, Pause, Pencil, Play, Plus, Receipt, Share2, SkipBack, SkipForward, Sparkles,
+  Ticket, UserRound, X, type LucideIcon,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { getSupabaseBrowser } from '@/lib/supabase';
@@ -11,6 +16,7 @@ import { validatePromo, discounted } from '@/lib/promoClient';
 import { escapeHtml } from '@/lib/html';
 import { MUSIC_STYLES, OCCASIONS, CREDITS } from '@/lib/constants';
 import SongRating from '@/components/SongRating';
+import { openContactModal } from '@/components/ContactModal';
 
 interface Order {
   id: string;
@@ -39,16 +45,22 @@ interface Payment {
   currency: string;
 }
 
-type Tab = 'dashboard' | 'payments' | 'profile';
+type Tab = 'dashboard' | 'credits' | 'payments' | 'profile';
 const PAGE_SIZE = 5;
+const RECENT_COUNT = 8;
 
 const STYLE_MAP = Object.fromEntries(MUSIC_STYLES.map((s) => [s.id, s]));
 const OCC_MAP = Object.fromEntries(OCCASIONS.map((o) => [o.id, o]));
 
-// Deterministic waveform bar heights (20–100%) seeded by a string.
-function bars(seed: string, n = 34): number[] {
+function hash(seed: string): number {
   let h = 2166136261;
   for (let i = 0; i < seed.length; i++) h = (h ^ seed.charCodeAt(i)) * 16777619;
+  return h >>> 0;
+}
+
+// Deterministic waveform bar heights (22–100%) seeded by a string.
+function bars(seed: string, n = 34): number[] {
+  let h = hash(seed) & 0x7fffffff;
   const out: number[] = [];
   for (let i = 0; i < n; i++) {
     h = (h * 1103515245 + 12345) & 0x7fffffff;
@@ -56,6 +68,15 @@ function bars(seed: string, n = 34): number[] {
   }
   return out;
 }
+
+// Song covers stay inside the CantaMe blues; each song keeps the same one.
+const COVERS = [
+  'linear-gradient(155deg, #1D4ED8 0%, #2563EB 45%, #06B6D4 100%)',
+  'linear-gradient(155deg, #312E81 0%, #4F46E5 50%, #3B82F6 100%)',
+  'linear-gradient(155deg, #0B1220 0%, #1E3A8A 55%, #2563EB 100%)',
+  'linear-gradient(155deg, #075985 0%, #0284C7 50%, #38BDF8 100%)',
+];
+const coverOf = (id: string) => COVERS[hash(id) % COVERS.length];
 
 function fmt(s: number) {
   if (!s || !isFinite(s)) return '0:00';
@@ -78,7 +99,6 @@ export default function DashboardPage() {
 
   // Credits
   const [credits, setCredits] = useState<number | null>(null);
-  const [showBuy, setShowBuy] = useState(false);
   const [buyQty, setBuyQty] = useState<number>(CREDITS.packs[0].credits);
   const [buying, setBuying] = useState(false);
   // Promo code in the "buy more songs" panel — display only; enforced server-side.
@@ -104,6 +124,9 @@ export default function DashboardPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [curTime, setCurTime] = useState(0);
   const [dur, setDur] = useState(0);
+
+  // "Recent songs" shelf
+  const shelfRef = useRef<HTMLDivElement>(null);
 
   const isEn = lang === 'en';
   const locale = isEn ? 'en-US' : 'es-ES';
@@ -280,12 +303,16 @@ export default function DashboardPage() {
     }
   };
   const nameOf = (o: Order) => o.recipientName || o.recipient_name || '—';
+  const titleOf = (o: Order) =>
+    o.lyrics ? o.lyrics.split('\n')[0].replace(/\[.*?\]/g, '').trim().slice(0, 40) || nameOf(o) : `${t('dashboard.for')} ${nameOf(o)}`;
   const dateRaw = (o: Order) => o.createdAt || o.created_at || '';
   const dateOf = (o: Order) =>
     new Date(dateRaw(o) || Date.now()).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
   const styleInfo = (o: Order) => STYLE_MAP[o.style];
   const styleLabel = (o: Order) => { const s = styleInfo(o); return s ? t(s.nameKey) : (o.style || '—'); };
   const occLabel = (o: Order) => { const oc = OCC_MAP[o.occasion]; return oc ? t(oc.nameKey) : (o.occasion || '—'); };
+  const isGenerating = (o: Order) => o.status === 'IN_PRODUCTION' && !audioOf(o);
+  const isLocked = (o: Order) => o.unlocked === false && !isGenerating(o);
 
   // ── Now-playing controls ──
   const playSong = useCallback((o: Order) => {
@@ -304,6 +331,13 @@ export default function DashboardPage() {
     a.play().catch(() => {});
   }, [nowPlaying]);
 
+  const scrollShelf = (dir: 1 | -1) => {
+    const el = shelfRef.current;
+    if (!el) return;
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: still ? 'auto' : 'smooth' });
+  };
+
   // ── Derived ──
   const genres = useMemo(() => {
     const set = new Set(orders.map((o) => o.style).filter(Boolean));
@@ -318,8 +352,13 @@ export default function DashboardPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageClamped = Math.min(page, totalPages);
   const paged = filtered.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE);
+  const recent = orders.slice(0, RECENT_COUNT);
 
   const readyCount = orders.filter((o) => audioOf(o)).length;
+  // Customers count in songs, never in credits (1 song = CREDITS.perSong).
+  const songsLeft = credits === null ? null : Math.floor(credits / CREDITS.perSong);
+  const availLabel = (n: number | null) =>
+    n === null ? '—' : n === 1 ? t('dashboard.songAvailableOne') : t('dashboard.songsAvailable', { n: String(n) });
   // Only what is known: a legacy row without an amount adds nothing, and when
   // no row has one the total is "—" rather than a false "$0.00".
   const knownAmounts = payments.filter((p) => p.amount !== null);
@@ -409,67 +448,117 @@ export default function DashboardPage() {
     );
   }
 
-  const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'there';
-  const initials = displayName.trim().slice(0, 2).toUpperCase();
-  const memberSince = user.created_at
+  const fullName = user.user_metadata?.full_name || '';
+  const displayName = fullName || user.email?.split('@')[0] || 'there';
+  const initial = displayName.trim().charAt(0).toUpperCase();
+  // Capitalize the first letter only: CSS `capitalize` turned "julio de 2026"
+  // into "Julio De 2026".
+  const memberSinceRaw = user.created_at
     ? new Date(user.created_at).toLocaleDateString(locale, { year: 'numeric', month: 'long' })
     : '—';
+  const memberSince = memberSinceRaw.charAt(0).toUpperCase() + memberSinceRaw.slice(1);
   const progress = dur > 0 ? (curTime / dur) * 100 : 0;
 
-  const navItems: { key: Tab; icon: string; label: string }[] = [
-    { key: 'dashboard', icon: '🏠', label: t('dashboard.overview') },
-    { key: 'payments', icon: '💳', label: t('dashboard.payments') },
-    { key: 'profile', icon: '⚙️', label: t('dashboard.profile') },
+  const heads: Record<Tab, { title: string; sub: string }> = {
+    dashboard: { title: t('dashboard.greeting', { name: displayName }), sub: t('dashboard.subtitle') },
+    credits: { title: t('dashboard.creditsTab'), sub: t('dashboard.creditsSubtitle') },
+    payments: { title: t('dashboard.payments'), sub: t('dashboard.paymentsSubtitle') },
+    profile: { title: t('dashboard.account'), sub: t('dashboard.accountSubtitle') },
+  };
+
+  type NavItem = { Icon: LucideIcon; label: string } & ({ tab: Tab } | { href: string });
+  const navGroups: { label: string; items: NavItem[] }[] = [
+    {
+      label: t('dashboard.groupGeneral'),
+      items: [
+        { tab: 'dashboard', Icon: House, label: t('dashboard.overview') },
+        { tab: 'profile', Icon: UserRound, label: t('dashboard.account') },
+      ],
+    },
+    {
+      label: t('dashboard.groupBilling'),
+      items: [
+        { tab: 'credits', Icon: Ticket, label: t('dashboard.creditsTab') },
+        { tab: 'payments', Icon: Receipt, label: t('dashboard.payments') },
+      ],
+    },
+    {
+      label: t('dashboard.groupCreate'),
+      items: [
+        { href: '/create', Icon: Plus, label: t('dashboard.newSong') },
+        { href: '/how-it-works', Icon: CircleHelp, label: t('nav.howItWorks') },
+      ],
+    },
   ];
 
-  // ── Song row ──
-  const SongRow = ({ o }: { o: Order }) => {
-    const st = styleInfo(o);
+  const stats: { Icon: LucideIcon; value: number | string; label: string }[] = [
+    { Icon: Music, value: orders.length, label: t('dashboard.statSongs') },
+    { Icon: Ticket, value: songsLeft ?? '—', label: t('dashboard.statAvailable') },
+    { Icon: Download, value: readyCount, label: t('dashboard.statReady') },
+    { Icon: Disc3, value: genres.length, label: t('dashboard.statGenres') },
+  ];
+
+  const selectedPack = CREDITS.packs.find((p) => p.credits === buyQty) || CREDITS.packs[0];
+
+  // ── Song row (library list) ──
+  const renderSongRow = (o: Order) => {
     const audio = audioOf(o);
-    const generating = o.status === 'IN_PRODUCTION' && !audio;
-    const locked = o.unlocked === false && !generating;
+    const generating = isGenerating(o);
+    const locked = isLocked(o);
     const active = nowPlaying?.id === o.id;
     const playingThis = active && isPlaying;
     return (
-      <div className={`song-item ${active ? 'active' : ''} ${generating ? 'is-generating' : ''}`}>
-        <button className="song-play" onClick={() => playSong(o)} disabled={!audio} aria-label={locked ? 'Locked' : 'Play'}>
-          {generating ? <span className="spinner spinner-sm" /> : locked ? '🔒' : playingThis ? '❚❚' : '▶'}
+      <div key={o.id} className={`song-item ${active ? 'active' : ''} ${generating ? 'is-generating' : ''}`}>
+        <button
+          className="song-play"
+          onClick={() => playSong(o)}
+          disabled={!audio}
+          aria-label={locked ? t('dashboard.locked') : playingThis ? 'Pause' : t('dashboard.play')}
+        >
+          {generating ? <span className="spinner spinner-sm" />
+            : locked ? <Lock size={17} aria-hidden />
+            : playingThis ? <Pause size={17} fill="currentColor" aria-hidden />
+            : <Play size={17} fill="currentColor" aria-hidden />}
         </button>
         <div className="song-info">
           <div className="song-title-row">
-            <span className="song-title">{o.lyrics ? o.lyrics.split('\n')[0].replace(/\[.*?\]/g, '').trim().slice(0, 40) || nameOf(o) : `${t('dashboard.for')} ${nameOf(o)}`}</span>
-            {generating && <span className="generating-badge">🎶 {t('dashboard.generating')}</span>}
+            <span className="song-title">{titleOf(o)}</span>
+            {generating && <span className="generating-badge">{t('dashboard.generating')}</span>}
             {playingThis && <span className="playing-badge">{t('dashboard.playing')}</span>}
           </div>
           <div className="song-meta">
             {generating ? t('dashboard.generatingHint') : `${t('dashboard.for')} ${nameOf(o)} · ${occLabel(o)} · ${dateOf(o)}`}
           </div>
         </div>
-        <span className="genre-chip" style={{ color: st?.color || 'var(--accent-primary)', borderColor: (st?.color || '#2563EB') + '55' }}>
-          {styleLabel(o)}
-        </span>
+        <span className="genre-chip">{styleLabel(o)}</span>
         {generating ? (
           <div className="gen-wave" aria-hidden><span /><span /><span /><span /><span /></div>
-        ) : (
+        ) : !locked && (
           <div className={`waveform ${playingThis ? 'is-playing' : ''}`} aria-hidden>
             {bars(o.id, 26).map((h, i) => <span key={i} style={{ height: `${h}%` }} />)}
           </div>
         )}
         <div className="song-actions">
-          {generating ? (
-            <span className="ico" style={{ opacity: 0.5, cursor: 'default' }} title={t('dashboard.generating')}>⏳</span>
-          ) : (
+          {!generating && (
             <>
               {/* The only way into a locked song: its play button is disabled
                   and the now-playing panel only ever shows playable songs. */}
               {locked && (
                 <button className="btn btn-primary btn-sm" onClick={() => unlockOrder(o.id)} disabled={unlockingId === o.id}>
-                  {unlockingId === o.id ? '…' : `🔓 ${t('credits.useOneCredit')}`}
+                  {unlockingId === o.id ? '…' : <><Lock size={14} aria-hidden /> {t('dashboard.unlock')}</>}
                 </button>
               )}
-              <Link className="ico" href={`/order/${o.id}/share`} title={t('dashboard.share')}>🔗</Link>
-              {audio && <a className="ico" href={`/api/orders/${o.id}/download`} title={t('dashboard.download')}>⬇</a>}
-              <Link className="ico" href={`/order/${o.id}/review`} title={t('dashboard.revise')}>⋯</Link>
+              <Link className="ico" href={`/order/${o.id}/share`} title={t('dashboard.share')} aria-label={t('dashboard.share')}>
+                <Share2 size={17} aria-hidden />
+              </Link>
+              {audio && (
+                <a className="ico" href={`/api/orders/${o.id}/download`} title={t('dashboard.download')} aria-label={t('dashboard.download')}>
+                  <Download size={17} aria-hidden />
+                </a>
+              )}
+              <Link className="ico" href={`/order/${o.id}/review`} title={t('dashboard.revise')} aria-label={t('dashboard.revise')}>
+                <Pencil size={16} aria-hidden />
+              </Link>
             </>
           )}
         </div>
@@ -477,32 +566,102 @@ export default function DashboardPage() {
     );
   };
 
+  // ── Cover card (recent songs shelf) ──
+  const renderCover = (o: Order) => {
+    const generating = isGenerating(o);
+    const locked = isLocked(o);
+    const playingThis = nowPlaying?.id === o.id && isPlaying;
+    return (
+      <article key={o.id} className={`cover ${playingThis ? 'is-playing' : ''}`} style={{ background: coverOf(o.id) }}>
+        <div className="cover-top">
+          <span className="cover-chip">{styleLabel(o)}</span>
+          {locked && <span className="cover-lock" title={t('dashboard.locked')}><Lock size={13} aria-hidden /></span>}
+        </div>
+        {generating ? (
+          <div className="cover-wave is-generating" aria-hidden><span /><span /><span /><span /><span /><span /><span /></div>
+        ) : (
+          <div className={`cover-wave ${playingThis ? 'is-playing' : ''}`} aria-hidden>
+            {bars(o.id, 24).map((h, i) => <span key={i} style={{ height: `${h}%` }} />)}
+          </div>
+        )}
+        <div className="cover-foot">
+          <div className="cover-text">
+            <div className="cover-title">{titleOf(o)}</div>
+            <div className="cover-meta">
+              {generating ? t('dashboard.generating') : `${t('dashboard.for')} ${nameOf(o)} · ${occLabel(o)}`}
+            </div>
+          </div>
+          {generating ? null : locked ? (
+            <button className="cover-unlock" onClick={() => unlockOrder(o.id)} disabled={unlockingId === o.id}>
+              {unlockingId === o.id ? '…' : t('dashboard.unlock')}
+            </button>
+          ) : (
+            <button className="cover-play" onClick={() => playSong(o)} aria-label={playingThis ? 'Pause' : t('dashboard.play')}>
+              {playingThis ? <Pause size={18} fill="currentColor" aria-hidden /> : <Play size={18} fill="currentColor" aria-hidden />}
+            </button>
+          )}
+        </div>
+      </article>
+    );
+  };
+
   return (
-    <div className="section" style={{ paddingTop: 'var(--space-lg)' }}>
+    <div className="dash-page">
       <div className="container">
+        {/* ── Page head ── */}
+        <header className="dash-head">
+          <div className="dash-head-text">
+            <h1 className="dash-title">{heads[tab].title}</h1>
+            <p className="dash-sub">{heads[tab].sub}</p>
+          </div>
+          <div className="dash-head-actions">
+            <button className="balance-pill" onClick={() => setTab('credits')} title={t('credits.yourBalance')}>
+              <Ticket size={16} aria-hidden />
+              <span>{availLabel(songsLeft)}</span>
+            </button>
+            <Link href="/create" className="btn btn-primary btn-sm dash-new">
+              <Sparkles size={15} aria-hidden /> {t('dashboard.newSong')}
+            </Link>
+          </div>
+        </header>
+
         <div className="dashboard">
           {/* ── Sidebar ── */}
           <aside className="dashboard-side">
-            <nav className="dashboard-nav">
-              {navItems.map((n) => (
-                <button key={n.key} className={tab === n.key ? 'active' : ''} onClick={() => setTab(n.key)}>
-                  <span>{n.icon}</span> {n.label}
-                </button>
+            <nav className="dash-nav" aria-label={t('nav.dashboard')}>
+              {navGroups.map((g) => (
+                <div className="dash-nav-group" key={g.label}>
+                  <div className="dash-nav-label">{g.label}</div>
+                  {g.items.map((item) =>
+                    'tab' in item ? (
+                      <button
+                        key={item.label}
+                        className={`dash-nav-item ${tab === item.tab ? 'active' : ''}`}
+                        aria-current={tab === item.tab ? 'page' : undefined}
+                        onClick={() => setTab(item.tab)}
+                      >
+                        <item.Icon size={18} strokeWidth={1.8} aria-hidden /> {item.label}
+                      </button>
+                    ) : (
+                      <Link key={item.label} href={item.href} className="dash-nav-item">
+                        <item.Icon size={18} strokeWidth={1.8} aria-hidden /> {item.label}
+                      </Link>
+                    ),
+                  )}
+                </div>
               ))}
-              <Link href="/create" className="dashnav-link"><span>➕</span> {t('dashboard.newSong')}</Link>
-              <Link href="/how-it-works" className="dashnav-link"><span>❔</span> {t('nav.howItWorks')}</Link>
             </nav>
 
             <div className="side-foot">
               <div className="side-user">
-                <div className="dash-avatar sm">{initials}</div>
+                <div className="dash-avatar sm">{initial}</div>
                 <div style={{ minWidth: 0 }}>
                   <div className="side-user-name">{displayName}</div>
                   <div className="side-user-mail">{user.email}</div>
                 </div>
               </div>
-              <button className="btn btn-secondary btn-sm w-full mt-sm" onClick={() => signOut().then(() => router.push('/'))}>
-                🚪 {t('dashboard.signOut')}
+              <button className="dash-nav-item side-signout" onClick={() => signOut().then(() => router.push('/'))}>
+                <LogOut size={18} strokeWidth={1.8} aria-hidden /> {t('dashboard.signOut')}
               </button>
             </div>
           </aside>
@@ -511,83 +670,99 @@ export default function DashboardPage() {
           <main className="dashboard-main">
             {justPaid && (
               <div className="paid-banner animate-fade-in-up" role="status">
-                <span className="paid-banner-icon">🎉</span>
+                <CircleCheck size={28} className="paid-banner-icon" aria-hidden />
                 <div className="paid-banner-text">
                   <strong>{t('dashboard.paidTitle')}</strong>
                   <span className="body-sm">{t('order.receiptNote')}</span>
                 </div>
-                <button className="paid-banner-close" aria-label={t('common.close')} onClick={() => setJustPaid(false)}>✕</button>
+                <button className="paid-banner-close" aria-label={t('common.close')} onClick={() => setJustPaid(false)}>
+                  <X size={18} aria-hidden />
+                </button>
               </div>
             )}
 
-            {/* DASHBOARD */}
+            {/* OVERVIEW */}
             {tab === 'dashboard' && (
-              <div className="animate-fade-in-up">
-                <div className="dash-topbar">
-                  <div>
-                    <h1 className="heading-lg">{t('dashboard.greeting', { name: displayName })}</h1>
-                    <p className="body-md">{t('dashboard.subtitle')}</p>
-                  </div>
-                  <Link href="/create" className="btn btn-primary">✨ {t('dashboard.newSong')}</Link>
-                </div>
+              <div className="dash-stack">
+                <section className="dcard stat-strip" aria-label={t('dashboard.overview')}>
+                  {stats.map(({ Icon, value, label }) => (
+                    <div className="stat-cell" key={label}>
+                      <span className="stat-ico"><Icon size={18} aria-hidden /></span>
+                      <div>
+                        <div className="stat-num">{value}</div>
+                        <div className="stat-lbl">{label}</div>
+                      </div>
+                    </div>
+                  ))}
+                </section>
 
-                {/* Stats */}
-                <div className="dash-stats">
-                  <div className="card dash-stat">
-                    <div className="dash-stat-icon primary">🎵</div>
-                    <div><div className="dash-stat-num">{orders.length}</div><div className="dash-stat-label">{t('dashboard.statSongs')}</div></div>
-                  </div>
-                  <div className="card dash-stat">
-                    <div className="dash-stat-icon">🎫</div>
-                    <div><div className="dash-stat-num">{credits ?? '—'}</div><div className="dash-stat-label">{t('credits.credits')}</div></div>
-                  </div>
-                  <div className="card dash-stat">
-                    <div className="dash-stat-icon">📥</div>
-                    <div><div className="dash-stat-num">{readyCount}</div><div className="dash-stat-label">{t('dashboard.statReady')}</div></div>
-                  </div>
-                  <div className="card dash-stat">
-                    <div className="dash-stat-icon">💿</div>
-                    <div><div className="dash-stat-num">{genres.length}</div><div className="dash-stat-label">{t('dashboard.statGenres')}</div></div>
-                  </div>
-                </div>
+                {/* Recent songs: a swipeable shelf of covers */}
+                {!loadingOrders && recent.length > 0 && (
+                  <section className="shelf">
+                    <div className="shelf-head">
+                      <h2 className="dcard-title">{t('dashboard.recent')}</h2>
+                      {recent.length > 2 && (
+                        <div className="shelf-arrows">
+                          <button className="shelf-arrow" onClick={() => scrollShelf(-1)} aria-label={t('dashboard.scrollPrev')}>
+                            <ChevronLeft size={18} aria-hidden />
+                          </button>
+                          <button className="shelf-arrow" onClick={() => scrollShelf(1)} aria-label={t('dashboard.scrollNext')}>
+                            <ChevronRight size={18} aria-hidden />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="shelf-track" ref={shelfRef}>
+                      {recent.map(renderCover)}
+                    </div>
+                  </section>
+                )}
 
                 {/* Split: list + now playing */}
                 <div className="dash-split">
-                  <section className="dash-split-main">
-                    <div className="flex items-center justify-between mb-md" style={{ gap: 8, flexWrap: 'wrap' }}>
-                      <h2 className="heading-md">{t('dashboard.mySongs')}</h2>
-                      <div className="genre-filters">
-                        <button className={filter === 'all' ? 'active' : ''} onClick={() => { setFilter('all'); setPage(1); }}>{t('dashboard.filter_all')}</button>
-                        {genres.slice(0, 4).map((g) => (
-                          <button key={g} className={filter === g ? 'active' : ''} onClick={() => { setFilter(g); setPage(1); }}>
-                            {STYLE_MAP[g] ? t(STYLE_MAP[g].nameKey) : g}
-                          </button>
-                        ))}
-                      </div>
+                  <section className="dcard dash-split-main">
+                    <div className="dcard-head">
+                      <h2 className="dcard-title">{t('dashboard.mySongs')}</h2>
+                      {genres.length > 1 && (
+                        <div className="genre-filters">
+                          <button className={filter === 'all' ? 'active' : ''} onClick={() => { setFilter('all'); setPage(1); }}>{t('dashboard.filter_all')}</button>
+                          {genres.slice(0, 4).map((g) => (
+                            <button key={g} className={filter === g ? 'active' : ''} onClick={() => { setFilter(g); setPage(1); }}>
+                              {STYLE_MAP[g] ? t(STYLE_MAP[g].nameKey) : g}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {loadingOrders ? (
                       <div className="spinner" style={{ margin: '2rem auto' }} />
                     ) : filtered.length === 0 ? (
-                      <div className="card text-center" style={{ padding: 'var(--space-2xl)' }}>
-                        <div style={{ fontSize: '3rem', marginBottom: 'var(--space-md)' }}>🎶</div>
-                        <p className="body-lg mb-lg">{t('dashboard.empty')}</p>
-                        <Link href="/create" className="btn btn-primary">✨ {t('dashboard.emptyCta')}</Link>
+                      <div className="dash-empty">
+                        <span className="dash-empty-ico"><Music size={26} aria-hidden /></span>
+                        <p className="body-lg">{t('dashboard.empty')}</p>
+                        <Link href="/create" className="btn btn-primary">
+                          <Sparkles size={16} aria-hidden /> {t('dashboard.emptyCta')}
+                        </Link>
                       </div>
                     ) : (
                       <>
                         <div className="songlist">
-                          {paged.map((o) => <SongRow key={o.id} o={o} />)}
+                          {paged.map(renderSongRow)}
                         </div>
                         <div className="dash-pagination">
                           <span className="body-sm">{t('dashboard.showing', { n: String(paged.length), total: String(filtered.length) })}</span>
                           {totalPages > 1 && (
                             <div className="pager">
-                              <button disabled={pageClamped <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹</button>
+                              <button disabled={pageClamped <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} aria-label={t('common.back')}>
+                                <ChevronLeft size={16} aria-hidden />
+                              </button>
                               {Array.from({ length: totalPages }).map((_, i) => (
                                 <button key={i} className={pageClamped === i + 1 ? 'active' : ''} onClick={() => setPage(i + 1)}>{i + 1}</button>
                               ))}
-                              <button disabled={pageClamped >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>›</button>
+                              <button disabled={pageClamped >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} aria-label={t('common.next')}>
+                                <ChevronRight size={16} aria-hidden />
+                              </button>
                             </div>
                           )}
                         </div>
@@ -597,7 +772,7 @@ export default function DashboardPage() {
 
                   {/* Right column */}
                   <aside className="dash-split-side">
-                    <div className="card nowplaying">
+                    <div className={`dcard nowplaying ${nowPlaying ? '' : 'is-empty'}`}>
                       <div className="np-label">{t('dashboard.nowPlaying')}</div>
                       {nowPlaying ? (
                         <>
@@ -605,23 +780,35 @@ export default function DashboardPage() {
                           <div className="np-meta">{t('dashboard.for')} {nameOf(nowPlaying)} · {styleLabel(nowPlaying)}</div>
                           <div className={`np-wave ${isPlaying ? 'is-playing' : ''}`}>
                             {bars(nowPlaying.id, 40).map((h, i) => (
-                              <span key={i} style={{ height: `${h}%`, opacity: (i / 40) * 100 <= progress ? 1 : 0.35 }} />
+                              <span key={i} style={{ height: `${h}%`, opacity: (i / 40) * 100 <= progress ? 1 : 0.3 }} />
                             ))}
                           </div>
                           <div className="np-time"><span>{fmt(curTime)}</span><span>{fmt(dur)}</span></div>
                           <div className="np-controls">
-                            <button className="np-btn" onClick={() => { const i = filtered.findIndex((x) => x.id === nowPlaying.id); if (i > 0) playSong(filtered[i - 1]); }} aria-label="Prev">⏮</button>
-                            <button className="np-btn np-main" onClick={() => playSong(nowPlaying)} aria-label="Play/Pause">{isPlaying ? '❚❚' : '▶'}</button>
-                            <button className="np-btn" onClick={() => { const i = filtered.findIndex((x) => x.id === nowPlaying.id); if (i >= 0 && i < filtered.length - 1) playSong(filtered[i + 1]); }} aria-label="Next">⏭</button>
+                            <button className="np-btn" onClick={() => { const i = filtered.findIndex((x) => x.id === nowPlaying.id); if (i > 0) playSong(filtered[i - 1]); }} aria-label="Prev">
+                              <SkipBack size={20} fill="currentColor" aria-hidden />
+                            </button>
+                            <button className="np-btn np-main" onClick={() => playSong(nowPlaying)} aria-label="Play/Pause">
+                              {isPlaying ? <Pause size={22} fill="currentColor" aria-hidden /> : <Play size={22} fill="currentColor" aria-hidden />}
+                            </button>
+                            <button className="np-btn" onClick={() => { const i = filtered.findIndex((x) => x.id === nowPlaying.id); if (i >= 0 && i < filtered.length - 1) playSong(filtered[i + 1]); }} aria-label="Next">
+                              <SkipForward size={20} fill="currentColor" aria-hidden />
+                            </button>
                           </div>
                           <div className="np-actions">
                             {nowPlaying.unlocked === false && (
                               <button className="btn btn-primary btn-sm" onClick={() => unlockOrder(nowPlaying.id)}>
-                                🔓 {t('credits.useOneCredit')}
+                                <Lock size={14} aria-hidden /> {t('credits.useOneCredit')}
                               </button>
                             )}
-                            <Link href={`/order/${nowPlaying.id}/share`} className="btn btn-outline btn-sm">🔗 {t('dashboard.share')}</Link>
-                            {audioOf(nowPlaying) && <a href={`/api/orders/${nowPlaying.id}/download`} className="btn btn-primary btn-sm">⬇ {t('dashboard.download')}</a>}
+                            <Link href={`/order/${nowPlaying.id}/share`} className="btn btn-outline btn-sm">
+                              <Share2 size={15} aria-hidden /> {t('dashboard.share')}
+                            </Link>
+                            {audioOf(nowPlaying) && (
+                              <a href={`/api/orders/${nowPlaying.id}/download`} className="btn btn-primary btn-sm">
+                                <Download size={15} aria-hidden /> {t('dashboard.download')}
+                              </a>
+                            )}
                           </div>
                           {audioOf(nowPlaying) && (
                             <div style={{ marginTop: 'var(--space-md)' }}>
@@ -638,107 +825,112 @@ export default function DashboardPage() {
                           )}
                         </>
                       ) : (
-                        <div className="np-empty">🎧 {t('dashboard.pickASong')}</div>
+                        <div className="np-empty">{t('dashboard.pickASong')}</div>
                       )}
                     </div>
 
-                    <div className="card letra-card">
+                    <div className={`dcard letra-card ${nowPlaying ? '' : 'is-empty'}`}>
                       <div className="np-label">{t('dashboard.lyrics')}</div>
                       {nowPlaying?.lyrics ? (
                         <>
                           <p className="letra-text">{nowPlaying.lyrics.replace(/\[.*?\]/g, '').trim().split('\n').filter(Boolean).slice(0, 4).join('\n')}</p>
-                          <Link href={`/order/${nowPlaying.id}`} className="letra-more">{t('dashboard.fullLyrics')} →</Link>
+                          <Link href={`/order/${nowPlaying.id}`} className="letra-more">{t('dashboard.fullLyrics')}</Link>
                         </>
                       ) : (
                         <p className="letra-text muted">{nowPlaying ? t('dashboard.noLyrics') : t('dashboard.lyricsHint')}</p>
                       )}
                     </div>
 
-                    <div className="card credits-card">
-                      <div className="cc-title">{t('dashboard.moreSongs')}</div>
+                    <div className="dcard credits-card">
+                      <div className="cc-balance"><Ticket size={18} aria-hidden /> {availLabel(songsLeft)}</div>
                       <p className="body-sm">{t('dashboard.moreSongsBody')}</p>
-                      {showBuy ? (
-                        <div className="buy-panel mt-sm">
-                          <div style={{ display: 'flex', gap: '0.4rem', marginBottom: 'var(--space-sm)' }}>
-                            {CREDITS.packs.map((p) => (
-                              <button
-                                key={p.id}
-                                type="button"
-                                className={`btn btn-sm ${buyQty === p.credits ? 'btn-primary' : 'btn-secondary'}`}
-                                style={{
-                                  flex: 1,
-                                  padding: '0.5rem 0.25rem',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'center',
-                                  gap: '0.1rem',
-                                  borderRadius: 'var(--radius-sm)',
-                                  fontSize: '0.8rem',
-                                  cursor: 'pointer',
-                                }}
-                                onClick={() => setBuyQty(p.credits)}
-                              >
-                                <strong style={{ fontSize: '1.05rem' }}>{p.songs}</strong>
-                                <span style={{ fontSize: '0.62rem', opacity: 0.85, textTransform: 'lowercase' }}>
-                                  {(p.songs as number) === 1 ? t('credits.song') : t('credits.songs')}
-                                </span>
-                                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>${p.price}</span>
-                              </button>
-                            ))}
-                          </div>
-                          <div style={{ display: 'flex', gap: '0.4rem', marginBottom: 'var(--space-sm)' }}>
-                            <input
-                              className="input-field"
-                              placeholder={t('credits.promoPlaceholder')}
-                              value={buyPromoInput}
-                              onChange={(e) => { setBuyPromoInput(e.target.value); setBuyPromoMsg(null); }}
-                              style={{ flex: 1, textTransform: 'uppercase', fontSize: '0.85rem', padding: '0.5rem 0.6rem' }}
-                            />
-                            <button type="button" className="btn btn-secondary btn-sm" onClick={applyBuyPromo} disabled={checkingBuyPromo || !buyPromoInput.trim()}>
-                              {checkingBuyPromo ? '…' : t('credits.promoApply')}
-                            </button>
-                          </div>
-                          {buyPromoMsg && (
-                            <p className="body-sm" style={{ marginBottom: 'var(--space-sm)', color: buyPromoPct ? 'var(--accent-green)' : '#F25F4C' }}>
-                              {buyPromoPct ? '✓ ' : '⚠️ '}{buyPromoMsg}
-                            </p>
-                          )}
-                          <button className="btn btn-primary btn-sm w-full" onClick={buyCredits} disabled={buying}>
-                            {buying ? '…' : (() => {
-                              const bp = CREDITS.packs.find((p) => p.credits === buyQty) || CREDITS.packs[0];
-                              const final = discounted(bp.price, buyPromoPct);
-                              return `${t('credits.confirmBuy')} · $${final.toFixed(2)}`;
-                            })()}
-                          </button>
-                          {buyError && (
-                            <p className="body-sm" style={{ marginTop: 'var(--space-sm)', color: '#F25F4C' }}>⚠️ {t('credits.payFailed')}</p>
-                          )}
-                        </div>
-                      ) : (
-                        <button className="btn btn-primary w-full mt-sm" onClick={() => setShowBuy(true)}>🎫 {t('credits.buyCredits')}</button>
-                      )}
+                      <button className="btn btn-primary btn-sm w-full mt-sm" onClick={() => setTab('credits')}>
+                        {t('credits.buyCredits')}
+                      </button>
                     </div>
                   </aside>
                 </div>
               </div>
             )}
 
+            {/* CREDITS */}
+            {tab === 'credits' && (
+              <div className="dash-stack credits-layout">
+                <section className="dcard balance-card">
+                  <div className="balance-label">{t('credits.yourBalance')}</div>
+                  <div className="balance-num">{songsLeft ?? '—'}</div>
+                  <div className="balance-unit">{songsLeft === 1 ? t('credits.song') : t('credits.songs')}</div>
+                  <p className="balance-note">{t('dashboard.unlockIncludes')}</p>
+                </section>
+
+                <section className="dcard">
+                  <div className="dcard-head">
+                    <h2 className="dcard-title">{t('dashboard.choosePack')}</h2>
+                  </div>
+                  <div className="pack-grid" role="radiogroup" aria-label={t('dashboard.choosePack')}>
+                    {CREDITS.packs.map((p) => {
+                      const selected = buyQty === p.credits;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          className={`pack ${selected ? 'selected' : ''}`}
+                          onClick={() => setBuyQty(p.credits)}
+                        >
+                          {'best' in p && p.best && <span className="pack-badge">{t('dashboard.bestValue')}</span>}
+                          <span className="pack-songs">{p.songs}</span>
+                          <span className="pack-unit">{t('credits.songs')}</span>
+                          <span className="pack-price">${p.price}</span>
+                          <span className="pack-per">{t('dashboard.perSong', { price: `$${(p.price / p.songs).toFixed(2)}` })}</span>
+                          {'save' in p && <span className="pack-save">{t('dashboard.saveAmount', { amount: `$${p.save}` })}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="buy-row">
+                    <input
+                      className="input-field"
+                      placeholder={t('credits.promoPlaceholder')}
+                      aria-label={t('credits.promoPlaceholder')}
+                      value={buyPromoInput}
+                      onChange={(e) => { setBuyPromoInput(e.target.value); setBuyPromoMsg(null); }}
+                    />
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={applyBuyPromo} disabled={checkingBuyPromo || !buyPromoInput.trim()}>
+                      {checkingBuyPromo ? '…' : t('credits.promoApply')}
+                    </button>
+                  </div>
+                  {buyPromoMsg && (
+                    <p className="body-sm buy-msg" style={{ color: buyPromoPct ? 'var(--accent-green)' : '#DC2626' }}>
+                      {buyPromoPct ? '✓ ' : '⚠️ '}{buyPromoMsg}
+                    </p>
+                  )}
+                  <button className="btn btn-primary w-full" onClick={buyCredits} disabled={buying}>
+                    {buying ? '…' : `${t('credits.confirmBuy')} · $${discounted(selectedPack.price, buyPromoPct).toFixed(2)}`}
+                  </button>
+                  {buyError && (
+                    <p className="body-sm buy-msg" style={{ color: '#DC2626' }}>⚠️ {t('credits.payFailed')}</p>
+                  )}
+                  <p className="body-sm buy-msg">{t('payment.redirectNote')}</p>
+                </section>
+              </div>
+            )}
+
             {/* PAYMENTS */}
             {tab === 'payments' && (
-              <div className="animate-fade-in-up">
-                <div className="dash-topbar">
-                  <div>
-                    <h1 className="heading-lg">{t('dashboard.payments')}</h1>
-                    <p className="body-md">{t('dashboard.paymentsSubtitle')}</p>
-                  </div>
-                  <span className="side-plan">🎫 {credits ?? '—'} {t('credits.credits')}</span>
-                </div>
-                {loadingPayments ? (
-                  <div className="spinner" style={{ margin: '2rem auto' }} />
-                ) : payments.length === 0 ? (
-                  <div className="empty-inline card">🧾 {t('dashboard.noPayments')}</div>
-                ) : (
-                  <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div className="dash-stack">
+                <section className="dcard" style={{ padding: 0, overflow: 'hidden' }}>
+                  {loadingPayments ? (
+                    <div className="spinner" style={{ margin: '2rem auto' }} />
+                  ) : payments.length === 0 ? (
+                    <div className="dash-empty">
+                      <span className="dash-empty-ico"><Receipt size={24} aria-hidden /></span>
+                      <p className="body-lg">{t('dashboard.noPayments')}</p>
+                      <button className="btn btn-primary" onClick={() => setTab('credits')}>{t('credits.buyCredits')}</button>
+                    </div>
+                  ) : (
                     <div className="table-scroll">
                       <table className="dash-table dash-table--receipts">
                         <thead><tr>
@@ -751,12 +943,14 @@ export default function DashboardPage() {
                             <tr key={p.id}>
                               <td><span className="cell-muted">{paymentDate(p)}</span></td>
                               <td>
-                                🎵 {songsLabel(p.songs)}
+                                {songsLabel(p.songs)}
                                 {p.promoCode && <span className="cell-muted"> · {p.promoCode}</span>}
                               </td>
                               <td style={{ fontWeight: 700 }}>{money(p.amount)}</td>
                               <td style={{ textAlign: 'right' }}>
-                                <button className="btn btn-outline btn-sm" onClick={() => openReceipt(p)}>🧾 {t('dashboard.downloadReceipt')}</button>
+                                <button className="btn btn-outline btn-sm" onClick={() => openReceipt(p)}>
+                                  <Receipt size={14} aria-hidden /> {t('dashboard.downloadReceipt')}
+                                </button>
                               </td>
                             </tr>
                           ))}
@@ -764,45 +958,59 @@ export default function DashboardPage() {
                         </tbody>
                       </table>
                     </div>
-                  </div>
-                )}
+                  )}
+                </section>
               </div>
             )}
 
-            {/* PROFILE */}
+            {/* ACCOUNT */}
             {tab === 'profile' && (
-              <div className="animate-fade-in-up" style={{ maxWidth: 620 }}>
-                <h1 className="heading-lg mb-xl">{t('dashboard.profileTitle')}</h1>
-                <div className="card mb-lg">
-                  <div className="flex items-center gap-lg mb-lg">
-                    <div className="dash-avatar">{initials}</div>
-                    <div>
-                      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.1rem' }}>{displayName}</div>
-                      <div className="body-sm">{user.email}</div>
-                    </div>
+              <div className="dash-stack account-layout">
+                <section className="dcard">
+                  <div className="dcard-head">
+                    <h2 className="dcard-title">{t('dashboard.profileCard')}</h2>
                   </div>
-                  <div className="profile-row"><span className="body-sm">{t('dashboard.memberSince')}</span><span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{memberSince}</span></div>
-                  <div className="profile-row"><span className="body-sm">{t('credits.credits')}</span><span style={{ fontWeight: 600 }}>🎫 {credits ?? '—'}</span></div>
-                  <div className="profile-row">
-                    <span className="body-sm">{t('dashboard.language')}</span>
-                    <div className="lang-switch">
-                      <button className={lang === 'es' ? 'active' : ''} onClick={() => setLang('es')}>ES</button>
-                      <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button>
-                    </div>
+                  <div className="acct-body">
+                    <div className="acct-avatar" aria-hidden>{initial}</div>
+                    <dl className="acct-fields">
+                      <div><dt>{t('dashboard.name')}</dt><dd>{fullName || '—'}</dd></div>
+                      <div><dt>{t('dashboard.email')}</dt><dd>{user.email}</dd></div>
+                      <div><dt>{t('dashboard.memberSince')}</dt><dd>{memberSince}</dd></div>
+                      <div>
+                        <dt>{t('dashboard.language')}</dt>
+                        <dd>
+                          <div className="lang-switch" style={{ display: 'inline-flex' }}>
+                            <button className={lang === 'es' ? 'active' : ''} onClick={() => setLang('es')}>ES</button>
+                            <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button>
+                          </div>
+                        </dd>
+                      </div>
+                    </dl>
                   </div>
-                </div>
-                <div className="card mb-lg">
-                  <h3 className="heading-sm mb-lg">🔒 {t('dashboard.changePassword')}</h3>
+                  <div className="dcard-note">
+                    <Lightbulb size={18} aria-hidden />
+                    <span>{t('dashboard.changeInfoHint')}</span>
+                    <button className="btn btn-dark btn-sm" onClick={() => openContactModal()}>{t('dashboard.contactSupport')}</button>
+                  </div>
+                </section>
+
+                <section className="dcard">
+                  <div className="dcard-head">
+                    <h2 className="dcard-title">{t('dashboard.changePassword')}</h2>
+                  </div>
                   <form onSubmit={handleChangePassword} className="auth-form">
                     <div className="input-group">
-                      <label className="input-label">{t('dashboard.newPassword')}</label>
-                      <input className="text-input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={isEn ? 'Min. 6 characters' : 'Mín. 6 caracteres'} minLength={6} />
+                      <label className="input-label" htmlFor="new-password">{t('dashboard.newPassword')}</label>
+                      <input id="new-password" className="text-input" type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={isEn ? 'Min. 6 characters' : 'Mín. 6 caracteres'} minLength={6} />
                     </div>
                     {pwMsg && <p className="body-sm mb-md" style={{ color: 'var(--accent-primary)' }}>{pwMsg}</p>}
                     <button type="submit" className="btn btn-primary btn-sm" disabled={newPassword.length < 6}>{t('dashboard.updatePassword')}</button>
                   </form>
-                </div>
-                <button className="btn btn-secondary w-full" onClick={() => signOut().then(() => router.push('/'))}>🚪 {t('dashboard.signOut')}</button>
+                </section>
+
+                <button className="btn btn-secondary w-full" onClick={() => signOut().then(() => router.push('/'))}>
+                  <LogOut size={16} aria-hidden /> {t('dashboard.signOut')}
+                </button>
               </div>
             )}
           </main>
