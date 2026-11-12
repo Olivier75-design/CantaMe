@@ -5,19 +5,39 @@ import { randomUUID } from 'node:crypto';
 import { buildStylePrompt, type SongBrief } from './musicPrompts';
 import { writeLyrics } from './lyrics';
 import { getSupabaseServer } from './supabase';
+import { streamMusic } from './minimaxStream';
 
 const HOST = process.env.MINIMAX_API_HOST || 'https://api.minimax.io';
 const KEY = process.env.MINIMAX_API_KEY;
 
-async function generateMusic(prompt: string, lyrics: string): Promise<Buffer> {
+// music-2.6 on purpose: music-3.0 was judged by ear and rejected (an audible
+// breath artefact at the end of the track). Any swap must be re-listened to.
+const MODEL = 'music-2.6';
+const AUDIO_SETTING = { sample_rate: 44100, bitrate: 256000, format: 'mp3' };
+
+async function generateMusic(
+  prompt: string,
+  lyrics: string,
+  onAudio?: (chunk: Buffer) => void,
+): Promise<Buffer> {
+  // Streaming mode: same song, but its first seconds arrive while the rest is
+  // still being composed, so a paying customer can start listening early.
+  if (onAudio) {
+    // 270 s: under the route's maxDuration (300), with room left to upload,
+    // save the order — or refund. A full stream measured ~160 s.
+    return streamMusic({
+      host: HOST, key: KEY!, model: MODEL, prompt, lyrics,
+      audioSetting: AUDIO_SETTING, onChunk: onAudio, timeoutMs: 270_000,
+    });
+  }
   const res = await fetch(`${HOST}/v1/music_generation`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'music-2.6',
+      model: MODEL,
       prompt,
       lyrics,
-      audio_setting: { sample_rate: 44100, bitrate: 256000, format: 'mp3' },
+      audio_setting: AUDIO_SETTING,
     }),
   });
   const data = await res.json();
@@ -64,9 +84,13 @@ function fitLyricsToWindow(full: string): string {
 }
 
 // Full pipeline: lyrics -> music -> uploaded to Supabase Storage. Returns the public URL + metadata.
+// `onAudio`, when given, switches MiniMax to streaming and receives each piece
+// of the MP3 as it is produced. Only pass it once the song is paid for: those
+// bytes are the song itself.
 export async function generateSongFile(
   input: GenerateInput,
-  revisionNotes?: string
+  revisionNotes?: string,
+  onAudio?: (chunk: Buffer) => void,
 ): Promise<{ audioUrl: string; title: string; lyrics: string }> {
   if (!KEY) {
     throw new Error('MINIMAX_API_KEY manquant cote serveur. Ajoute-le dans .env.local puis redemarre le serveur.');
@@ -87,7 +111,7 @@ export async function generateSongFile(
   // One generation produces the real, full-length (~2 min) song the customer
   // keeps — there is no separate preview render. Guard the lyrics window so the
   // vocal never gets cut off mid-phrase by the music model.
-  const audio = await generateMusic(prompt, fitLyricsToWindow(lyrics));
+  const audio = await generateMusic(prompt, fitLyricsToWindow(lyrics), onAudio);
 
   // Upload to Supabase Storage
   const supabase = getSupabaseServer();

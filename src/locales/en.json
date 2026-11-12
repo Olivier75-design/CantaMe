@@ -206,6 +206,19 @@
     "compose": "Compose my song",
     "backToLyrics": "Back to lyrics"
   },
+  "compose": {
+    "usesSong": "Uses 1 song from your balance. You'll start hearing it while it's being composed.",
+    "startsSoon": "Your song starts playing in about 30 seconds. The rest is composed while you listen.",
+    "liveTitle": "Listen while it's composed",
+    "liveNote": "Still composing. The rest of the song arrives as you listen.",
+    "failedTitle": "Generation failed",
+    "failed": "Something went wrong while composing. Try again.",
+    "refunded": "The song couldn't be composed. The song from your balance was given back.",
+    "limit": "You've composed many songs in a short time. Try again in a little while.",
+    "interruptedTitle": "Connection lost",
+    "interrupted": "Your song is still being composed. It will be in My songs in a few minutes.",
+    "openLibrary": "Open My songs"
+  },
   "auth": {
     "signUpTitle": "Create your account",
     "signInTitle": "Sign in",

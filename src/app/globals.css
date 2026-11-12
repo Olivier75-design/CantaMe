@@ -783,6 +783,75 @@ select.input-field option {
   flex-shrink: 0;
 }
 
+/* ===== Live composition (the song streams in while it is composed) ===== */
+/* Total length unknown yet: an indeterminate sweep instead of a progress bar. */
+.audio-player-progress.is-live {
+  cursor: default;
+  position: relative;
+}
+.audio-player-progress.is-live::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  border-radius: 2px;
+  background: var(--gradient-warm);
+  animation: live-sweep 1.6s ease-in-out infinite;
+}
+@keyframes live-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(290%); }
+}
+
+.live-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(22, 163, 74, 0.10);
+  color: #15803D;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent-green);
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+/* "This uses 1 song from your balance" under the compose button. */
+.compose-note {
+  margin-top: var(--space-sm);
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.lyrics-readalong {
+  white-space: pre-wrap;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--space-md);
+  background: var(--bg-glass);
+  border-radius: var(--radius-md);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audio-player-progress.is-live::after { animation: none; width: 100%; opacity: 0.45; }
+  .live-dot { animation: none; }
+}
+
 /* Large player variant */
 .audio-player-lg {
   flex-direction: column;

@@ -275,6 +275,9 @@ export const db = {
       audio_url: orderData.audio_url || orderData.audioUrl || null,
       instrumental_url: orderData.instrumental_url || orderData.instrumentalUrl || null,
       lyrics: orderData.lyrics ?? null,
+      // Only when the caller says so (a song paid for at generation): left
+      // out, the column default (false) keeps every new song locked.
+      ...(orderData.unlocked === true ? { unlocked: true } : {}),
     };
 
     const doInsert = (r: Record<string, unknown>) =>

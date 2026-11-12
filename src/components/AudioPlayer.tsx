@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
 
 interface AudioPlayerProps {
   src?: string;
@@ -9,6 +9,10 @@ interface AudioPlayerProps {
   showVisualizer?: boolean;
   maxDuration?: number; // limit playback to N seconds (for previews)
   onEnded?: () => void;
+  autoPlay?: boolean; // try to start on its own (browsers may refuse: ▶ stays)
+  // The song is still being composed and streams in (MediaSource): its total
+  // length is unknown, so there is nothing to seek to yet.
+  live?: boolean;
 }
 
 export default function AudioPlayer({
@@ -18,6 +22,8 @@ export default function AudioPlayer({
   showVisualizer = false,
   maxDuration,
   onEnded,
+  autoPlay = false,
+  live = false,
 }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -34,10 +40,22 @@ export default function AudioPlayer({
       audio.pause();
       setIsPlaying(false);
     } else {
-      audio.play().catch(() => {});
+      audio.play().catch(() => setIsPlaying(false));
       setIsPlaying(true);
     }
   }, [isPlaying, src]);
+
+  // Safari only opens a streamed (Managed)MediaSource on an element whose
+  // remote playback (AirPlay) is disabled. Set before the source loads.
+  useLayoutEffect(() => {
+    const audio = audioRef.current as (HTMLAudioElement & { disableRemotePlayback?: boolean }) | null;
+    if (live && audio) audio.disableRemotePlayback = true;
+  }, [live]);
+
+  useEffect(() => {
+    if (!autoPlay || !src) return;
+    audioRef.current?.play().catch(() => { /* needs a tap: ▶ stays visible */ });
+  }, [autoPlay, src]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -54,7 +72,10 @@ export default function AudioPlayer({
       }
     };
 
-    const onLoadedMetadata = () => setDuration(audio.duration);
+    // A streamed song has no finite duration until it is complete.
+    const onLoadedMetadata = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
     const onEndedHandler = () => {
       setIsPlaying(false);
       setCurrentTime(0);
@@ -63,11 +84,17 @@ export default function AudioPlayer({
 
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('durationchange', onLoadedMetadata);
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('pause', onPause);
     audio.addEventListener('ended', onEndedHandler);
 
     return () => {
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('durationchange', onLoadedMetadata);
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('pause', onPause);
       audio.removeEventListener('ended', onEndedHandler);
     };
   }, [maxDuration, onEnded]);
@@ -80,7 +107,7 @@ export default function AudioPlayer({
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || live || !effectiveDuration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = (e.clientX - rect.left) / rect.width;
     const targetTime = ratio * effectiveDuration;
@@ -88,7 +115,7 @@ export default function AudioPlayer({
     setCurrentTime(targetTime);
   };
 
-  const progress = effectiveDuration > 0 ? (currentTime / effectiveDuration) * 100 : 0;
+  const progress = !live && effectiveDuration > 0 ? (currentTime / effectiveDuration) * 100 : 0;
 
   if (variant === 'mini') {
     return (
@@ -129,7 +156,7 @@ export default function AudioPlayer({
       </button>
       <div className="audio-player-info">
         {title && <div className="audio-player-title">{title}</div>}
-        <div className="audio-player-progress" onClick={handleProgressClick}>
+        <div className={`audio-player-progress ${live ? 'is-live' : ''}`} onClick={handleProgressClick}>
           <div
             className="audio-player-progress-bar"
             style={{ width: `${progress}%` }}
@@ -144,7 +171,7 @@ export default function AudioPlayer({
         </div>
       ) : (
         <span className="audio-player-time">
-          {formatTime(currentTime)} / {formatTime(effectiveDuration)}
+          {live ? formatTime(currentTime) : `${formatTime(currentTime)} / ${formatTime(effectiveDuration)}`}
         </span>
       )}
     </div>

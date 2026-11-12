@@ -10,6 +10,7 @@ import SongRating from '@/components/SongRating';
 import { authHeaders } from '@/lib/authClient';
 import AudioPlayer from '@/components/AudioPlayer';
 import { TEMPLATES } from '@/lib/templates';
+import { useSongComposer, useSongsBalance } from '@/lib/songComposer';
 
 interface OrderForm {
   recipientName: string;
@@ -70,17 +71,20 @@ export default function HomeDashboardPage() {
     voiceGender: 'female',
   });
 
-  // Loading animation state
-  const [isGenerating, setIsGenerating] = useState(false);
+  // Composing. With a song in the balance it is paid for on the spot and
+  // streams in while it is composed (no unlock step); without one it comes
+  // back locked and is unlocked below.
+  const composer = useSongComposer();
+  const songsLeft = useSongsBalance(user?.id, CREDITS.perSong);
+  const expectLive = composer.paid || (songsLeft ?? 0) >= 1;
+  const isGenerating = composer.phase === 'composing';
   const [generatingStep, setGeneratingStep] = useState(0);
   const loaderRef = useRef<HTMLDivElement>(null);
 
-  // Real generation result
-  const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
-
-  // Set once the song exists but is still locked; cleared into
-  // generatedAudioUrl once credits have been spent to unlock it.
-  const [generatedOrderId, setGeneratedOrderId] = useState<string | null>(null);
+  // The saved file (download, rating) — set when the song is done, or once
+  // credits have been spent to unlock a locked one.
+  const generatedAudioUrl = composer.audioUrl;
+  const generatedOrderId = composer.orderId;
   const [unlocking, setUnlocking] = useState(false);
 
   const handleUnlock = async () => {
@@ -100,7 +104,7 @@ export default function HomeDashboardPage() {
         return;
       }
       if (!res.ok) throw new Error(data?.error || 'Error');
-      setGeneratedAudioUrl(data.audioUrl);
+      composer.markUnlocked(data.audioUrl);
     } catch {
       setGenerateError(isEn ? 'Could not unlock the song.' : 'No se pudo desbloquear la canción.');
     } finally {
@@ -118,6 +122,8 @@ export default function HomeDashboardPage() {
       .then((d) => setFeatured(Array.isArray(d.songs) ? d.songs : []))
       .catch(() => setFeatured([]));
   }, []);
+  // Unlock / download problems, shown under the song (compose failures have
+  // their own screen, from the composer).
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   // Editable lyrics step (generated before the music is composed)
@@ -234,7 +240,7 @@ export default function HomeDashboardPage() {
     if (!form.recipientName || !form.relation || !form.anecdote1 || !form.message) return;
 
     setGenerateError(null);
-    setGeneratedAudioUrl(null);
+    composer.reset();
     setLyrics('');
     setStep(4);
     await requestLyrics();
@@ -243,34 +249,11 @@ export default function HomeDashboardPage() {
   // Compose the music from the (possibly user-edited) lyrics.
   const handleCompose = async () => {
     setGenerateError(null);
-    setGeneratedAudioUrl(null);
-    setIsGenerating(true);
     setGeneratingStep(0);
     setStep(5);
-
-    try {
-      const res = await fetch('/api/generate-song', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-        body: JSON.stringify({ ...briefBody(), lyrics, title: lyricsTitle }),
-      });
-      const data = await res.json();
-
-      // Creating requires an account now — the route 401s without one.
-      if (res.status === 401) {
-        router.push('/signin?mode=signup&next=/create');
-        return;
-      }
-      if (!res.ok) throw new Error(data?.error || 'Error');
-
-      // The song comes back LOCKED and without its audio URL. Credits are spent
-      // to unlock it, not to generate it.
-      setGeneratedOrderId(data.orderId);
-    } catch (err) {
-      setGenerateError(err instanceof Error ? err.message : (t('hero.stats') === 'songs created' ? 'Generation failed' : 'La generación falló'));
-    } finally {
-      setIsGenerating(false);
-    }
+    // Creating requires an account — the route 401s without one.
+    const outcome = await composer.compose({ ...briefBody(), lyrics, title: lyricsTitle });
+    if (outcome === 'auth') router.push('/signin?mode=signup&next=/create');
   };
 
   // Advance the loading animation while the real generation runs (holds on the last step).
@@ -797,6 +780,7 @@ export default function HomeDashboardPage() {
                     🎶 {t('form.generatePreview')}
                   </button>
                 </div>
+                {(songsLeft ?? 0) >= 1 && <p className="compose-note">{t('compose.usesSong')}</p>}
                 <div className="text-center mt-md">
                   <button className="btn btn-ghost btn-sm" onClick={() => setStep(3)}>← {t('common.back')}</button>
                 </div>
@@ -832,22 +816,34 @@ export default function HomeDashboardPage() {
                 </ul>
 
                 <p className="song-loader-hint">
-                  {isEn
-                    ? '⏳ This usually takes 30–60 seconds. Please keep this page open.'
-                    : '⏳ Esto suele tardar 30–60 segundos. No cierres esta página.'}
+                  {expectLive
+                    ? `⏳ ${t('compose.startsSoon')}`
+                    : isEn
+                      ? '⏳ This usually takes 30–60 seconds. Please keep this page open.'
+                      : '⏳ Esto suele tardar 30–60 segundos. No cierres esta página.'}
                 </p>
               </div>
-            ) : generateError ? (
-              /* Generation Error Screen */
+            ) : composer.phase === 'error' && composer.error ? (
+              /* Generation Error Screen. A dropped connection on a paid song is
+                 not a failure: the server keeps composing and saves it to the
+                 library, and composing again would pay twice. */
               <div className="card text-center" style={{ maxWidth: 540, margin: '0 auto' }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: 'var(--space-sm)' }}>⚠️</div>
+                <div style={{ fontSize: '2.5rem', marginBottom: 'var(--space-sm)' }}>
+                  {composer.error === 'interrupted' ? '📡' : '⚠️'}
+                </div>
                 <h3 className="heading-md mb-md">
-                  {t('hero.stats') === 'songs created' ? 'Generation failed' : 'La generación falló'}
+                  {composer.error === 'interrupted' ? t('compose.interruptedTitle') : t('compose.failedTitle')}
                 </h3>
-                <p className="body-sm mb-lg" style={{ color: 'var(--accent-primary)' }}>{generateError}</p>
+                <p className="body-sm mb-lg" style={{ color: 'var(--text-secondary)' }}>{t(`compose.${composer.error}`)}</p>
                 <div className="flex gap-md justify-center" style={{ flexWrap: 'wrap' }}>
-                  <button className="btn btn-primary" onClick={handleCompose}>🔄 {t('lyrics.compose')}</button>
-                  <button className="btn btn-outline" onClick={() => { setStep(4); setGenerateError(null); }}>← {t('lyrics.backToLyrics')}</button>
+                  {composer.error === 'interrupted' ? (
+                    <button className="btn btn-primary" onClick={handleGetSong}>{t('compose.openLibrary')}</button>
+                  ) : (
+                    <>
+                      <button className="btn btn-primary" onClick={handleCompose}>🔄 {t('lyrics.compose')}</button>
+                      <button className="btn btn-outline" onClick={() => { setStep(4); composer.reset(); }}>← {t('lyrics.backToLyrics')}</button>
+                    </>
+                  )}
                 </div>
               </div>
             ) : (
@@ -858,23 +854,33 @@ export default function HomeDashboardPage() {
                   style={{ maxWidth: 540, margin: '0 auto var(--space-xl)', background: 'var(--gradient-card)' }}
                 >
                   <div className="animate-float" style={{ fontSize: '3rem', marginBottom: 'var(--space-sm)' }}>🎵</div>
-                  <h3 className="heading-md mb-md">{t('preview.title')}</h3>
-                  <p className="body-sm mb-lg">{t('preview.subtitle', { name: recipientName })}</p>
+                  <h3 className="heading-md mb-md">
+                    {composer.phase === 'live' ? t('compose.liveTitle') : t('preview.title')}
+                  </h3>
+                  {composer.phase === 'live' ? (
+                    <p className="live-note mb-lg"><span className="live-dot" aria-hidden />{t('compose.liveNote')}</p>
+                  ) : (
+                    <p className="body-sm mb-lg">{t('preview.subtitle', { name: recipientName })}</p>
+                  )}
 
                   {/* No player until there is audio: an empty one reads
                       0:00 / 0:00 and its ▶ does nothing, so customers took a
                       locked song for a failed one and composed it again. */}
-                  {generatedAudioUrl && (
+                  {/* While it streams, the same player keeps playing once the
+                      song is complete — it must not remount, or playback restarts. */}
+                  {composer.playerSrc && (
                     <AudioPlayer
-                      src={generatedAudioUrl}
+                      src={composer.playerSrc}
                       variant="large"
                       title={`${(isEn ? musicStyles.find((s) => s.id === selectedStyle)?.nameEn : musicStyles.find((s) => s.id === selectedStyle)?.nameEs) || selectedStyle} · ${recipientName}`}
                       showVisualizer
+                      live={composer.phase === 'live'}
+                      autoPlay={composer.paid}
                     />
                   )}
 
                   {/* Song composed but not paid for: no player, no audio URL. */}
-                  {generatedOrderId && !generatedAudioUrl && (
+                  {generatedOrderId && !composer.playerSrc && (
                     <div className="card mt-lg" style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: '2.5rem' }}>🔒</div>
                       <h4 className="heading-sm" style={{ marginTop: 'var(--space-sm)' }}>
@@ -895,6 +901,10 @@ export default function HomeDashboardPage() {
                           : (isEn ? '🔓 Unlock my song' : '🔓 Desbloquear mi canción')}
                       </button>
                     </div>
+                  )}
+
+                  {generateError && (
+                    <p className="body-sm mt-md" style={{ color: 'var(--accent-primary)' }}>{generateError}</p>
                   )}
 
                   {generatedAudioUrl && (
@@ -923,6 +933,14 @@ export default function HomeDashboardPage() {
                     {t('preview.cta', { name: recipientName })}
                   </p>
                 </div>
+
+                {/* The lyrics, to read along while it plays. */}
+                {composer.playerSrc && lyrics && (
+                  <div className="card mb-xl" style={{ maxWidth: 540, margin: '0 auto var(--space-xl)' }}>
+                    <h3 className="heading-sm text-center mb-md">📝 {t('lyrics.title')}</h3>
+                    <div className="lyrics-readalong">{lyrics}</div>
+                  </div>
+                )}
 
                 {/* Guests are invited to sign in (2nd song free); members just save it. */}
                 <div className="credit-cta card">

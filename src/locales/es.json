@@ -206,6 +206,19 @@
     "compose": "Componer mi canción",
     "backToLyrics": "Volver a las letras"
   },
+  "compose": {
+    "usesSong": "Usa 1 canción de tu saldo. Empezarás a escucharla mientras se compone.",
+    "startsSoon": "Tu canción empieza a sonar en unos 30 segundos. El resto se compone mientras la escuchas.",
+    "liveTitle": "Escúchala mientras se compone",
+    "liveNote": "Aún se está componiendo. El resto de la canción llega mientras escuchas.",
+    "failedTitle": "La generación falló",
+    "failed": "Algo falló al componer. Inténtalo de nuevo.",
+    "refunded": "No se pudo componer la canción. Te devolvimos la canción de tu saldo.",
+    "limit": "Has compuesto muchas canciones en poco tiempo. Vuelve a intentarlo en un rato.",
+    "interruptedTitle": "Se perdió la conexión",
+    "interrupted": "Tu canción se sigue componiendo. Estará en Mis canciones en unos minutos.",
+    "openLibrary": "Abrir Mis canciones"
+  },
   "auth": {
     "signUpTitle": "Crea tu cuenta",
     "signInTitle": "Inicia sesión",
